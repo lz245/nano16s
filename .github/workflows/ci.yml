@@ -90,11 +90,17 @@ jobs:
         run: |
           conda --version
           bash install.sh
+          # `conda activate` needs conda's shell function, which a user gets
+          # from `conda init` when they install Miniforge but a CI runner does
+          # not have. Sourcing the profile script is the equivalent, and is
+          # what any non-interactive script needs to do.
+          source "$(conda info --base)/etc/profile.d/conda.sh"
           conda activate nano16s
           echo "CONDA_PREFIX=$CONDA_PREFIX"
 
       - name: Every tool runs on this platform
         run: |
+          source "$(conda info --base)/etc/profile.d/conda.sh"
           conda activate nano16s
           for t in emu minimap2 samtools chopper porechop_abi NanoStat snakemake; do
             command -v "$t" >/dev/null || { echo "MISSING: $t"; exit 1; }
@@ -105,6 +111,7 @@ jobs:
 
       - name: The command is on PATH and resolves the repository, not the env
         run: |
+          source "$(conda info --base)/etc/profile.d/conda.sh"
           conda activate nano16s
           # Invoked through the symlink install.sh created, which is how a real
           # user runs it. If ROOT resolves to the environment prefix instead of
@@ -116,6 +123,7 @@ jobs:
 
       - name: With no database installed it refuses clearly
         run: |
+          source "$(conda info --base)/etc/profile.d/conda.sh"
           conda activate nano16s
           set +e
           OUT="$(nano16s -d test/demo/fastq_pass -o "$RUNNER_TEMP/out" -y 2>&1)"
@@ -127,6 +135,7 @@ jobs:
 
       - name: The workflow graph builds
         run: |
+          source "$(conda info --base)/etc/profile.d/conda.sh"
           conda activate nano16s
           mkdir -p "$RUNNER_TEMP/fakedb"
           printf 'tax_id\tspecies\n'  > "$RUNNER_TEMP/fakedb/taxonomy.tsv"
@@ -136,6 +145,7 @@ jobs:
 
       - name: No package came from Anaconda's defaults channel
         run: |
+          source "$(conda info --base)/etc/profile.d/conda.sh"
           conda activate nano16s
           if conda list --json | grep -qi '"channel": *"pkgs/'; then
             echo "A package resolved from defaults despite nodefaults:"
@@ -161,23 +171,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mamba-org/setup-micromamba@v1
-        with:
-          environment-file: environment.yml
-          cache-environment: true
-
+      # Same reasoning as the install job: let install.sh build the
+      # environment itself rather than handing it a pre-built one, so this
+      # exercises the path the README documents.
       - name: Install
         run: bash install.sh
 
       - name: Build the reference database from NCBI
         run: |
-          hash -r
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate nano16s
           nano16s db build
           nano16s db list
 
       - name: Run the bundled demo end to end
         run: |
-          hash -r
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate nano16s
           nano16s test
 
       - name: Keep the report and tables for inspection
