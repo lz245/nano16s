@@ -86,6 +86,31 @@ jobs:
       #
       # The point of this job is to walk the path the README documents, so it
       # lets install.sh do the whole job, exactly as a user would.
+      # The README's Requirements section says you need Miniforge or another
+      # conda. Runner images are inconsistent about this — ubuntu-latest ships
+      # Miniconda, macos-14 ships nothing — so rather than depend on whatever
+      # happens to be preinstalled, install Miniforge exactly as a new user
+      # would. That makes this job test the documented prerequisite as well as
+      # the installer.
+      - name: Install Miniforge if the runner has no conda
+        run: |
+          if command -v conda >/dev/null; then
+            echo "conda already present: $(conda --version)"
+            exit 0
+          fi
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64) SFX=MacOSX-arm64 ;;
+            Darwin-x86_64) SFX=MacOSX-x86_64 ;;
+            Linux-x86_64) SFX=Linux-x86_64 ;;
+            Linux-aarch64) SFX=Linux-aarch64 ;;
+            *) echo "unsupported platform: $(uname -s)-$(uname -m)"; exit 1 ;;
+          esac
+          curl -fsSL -o /tmp/miniforge.sh \
+            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${SFX}.sh"
+          bash /tmp/miniforge.sh -b -p "$HOME/miniforge3"
+          echo "$HOME/miniforge3/bin" >> "$GITHUB_PATH"
+          echo "installed Miniforge for ${SFX}"
+
       - name: Install the way the README says to
         run: |
           conda --version
@@ -170,6 +195,14 @@ jobs:
         shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Miniforge if the runner has no conda
+        run: |
+          if command -v conda >/dev/null; then exit 0; fi
+          curl -fsSL -o /tmp/miniforge.sh \
+            "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
+          bash /tmp/miniforge.sh -b -p "$HOME/miniforge3"
+          echo "$HOME/miniforge3/bin" >> "$GITHUB_PATH"
 
       # Same reasoning as the install job: let install.sh build the
       # environment itself rather than handing it a pre-built one, so this
