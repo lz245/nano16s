@@ -110,16 +110,31 @@ def check_abundance(root: Path) -> None:
         except ValueError:
             label_i = 1
 
-        sample_idx = [i for i, h in enumerate(header)
-                      if i != label_i and h.lower() not in ("tax_id", "taxid", "")]
+        # Emu writes the full lineage before the sample columns, so anything
+        # named for a taxonomic rank is taxonomy rather than a barcode.
+        lineage = {"tax_id", "taxid", "species", "genus", "family", "order",
+                   "class", "phylum", "superkingdom", "domain", "kingdom",
+                   "subspecies", "clade", "lineage", "estimated counts", ""}
+        rows = [r for r in reader if len(r) > label_i]
+        sample_idx = []
+        for i, h in enumerate(header):
+            if i == label_i or h.strip().lower() in lineage:
+                continue
+            for r in rows:
+                if i < len(r) and r[i].strip():
+                    try:
+                        float(r[i])
+                        sample_idx.append(i)
+                    except ValueError:
+                        pass
+                    break
+
         sums = {i: 0.0 for i in sample_idx}
         n_taxa = 0
-        for row in reader:
-            if len(row) <= label_i:
-                continue
+        for row in rows:
             n_taxa += 1
             for i in sample_idx:
-                if i < len(row):
+                if i < len(row) and row[i].strip():
                     try:
                         sums[i] += float(row[i])
                     except ValueError:

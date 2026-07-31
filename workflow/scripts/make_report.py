@@ -5,9 +5,13 @@ No external assets, no plotting library — charts are inline SVG generated
 here. The file opens by double-click and can be emailed as-is.
 
 Driven by Snakemake (`snakemake.input`, `snakemake.output`, `snakemake.params`).
-"""
 
-from __future__ import annotations
+Note: no `from __future__ import annotations` here. Snakemake's `script:`
+directive prepends its own preamble to this file before running it, which would
+push a __future__ import off line 1 and make it a SyntaxError. The builtin
+generic annotations used below need Python 3.9+, which environment.yml already
+requires.
+"""
 
 import csv
 import html
@@ -55,11 +59,24 @@ def read_summary(path):
     return rows
 
 
+# Emu's combined tables carry the full lineage before the sample columns, so
+# a column named for any of these is taxonomy, never a barcode.
+LINEAGE_COLUMNS = {
+    "tax_id", "taxid", "species", "genus", "family", "order", "class",
+    "phylum", "superkingdom", "domain", "kingdom", "subspecies", "clade",
+    "lineage", "estimated counts", "",
+}
+
+
 def read_abundance(path, rank):
     """Emu combined table -> (sample_names, {taxon: {sample: fraction}}).
 
-    Emu writes tax_id, the rank column, then one column per sample. Sample
-    column names carry Emu's own suffixes, which are stripped for display.
+    Emu writes tax_id, the full lineage (species through superkingdom), then
+    one column per sample. Sample columns are identified two ways: the name
+    is not a taxonomic rank, AND at least one row holds a parseable number.
+    Name alone is not enough — a barcode could in principle be called
+    "class" — and values alone are not enough either, since a lineage column
+    is text but could be empty throughout a small table.
     """
     path = Path(path)
     if not path.exists() or path.stat().st_size == 0:
@@ -73,25 +90,33 @@ def read_abundance(path, rank):
         if header and header[0].startswith("#"):
             return [], {}
 
-        # The label column is the one named for the rank; fall back to the
-        # first non-tax_id column.
         try:
             label_i = header.index(rank)
         except ValueError:
             label_i = 1 if len(header) > 1 else 0
 
-        sample_idx = [i for i, h in enumerate(header)
-                      if i != label_i and h.lower() not in ("tax_id", "taxid", "")]
+        rows = [r for r in reader if r and len(r) > label_i]
+
+        candidates = [i for i, h in enumerate(header)
+                      if i != label_i and h.strip().lower() not in LINEAGE_COLUMNS]
+        sample_idx = []
+        for i in candidates:
+            for r in rows:
+                if i < len(r) and r[i].strip():
+                    try:
+                        float(r[i])
+                        sample_idx.append(i)
+                        break
+                    except ValueError:
+                        break
         samples = [_clean_sample(header[i]) for i in sample_idx]
 
         table: dict[str, dict[str, float]] = {}
-        for row in reader:
-            if not row or len(row) <= label_i:
-                continue
+        for row in rows:
             taxon = (row[label_i] or "").strip() or "Unassigned"
             per = table.setdefault(taxon, {s: 0.0 for s in samples})
             for s, i in zip(samples, sample_idx):
-                if i < len(row):
+                if i < len(row) and row[i].strip():
                     try:
                         per[s] += float(row[i])
                     except (TypeError, ValueError):
