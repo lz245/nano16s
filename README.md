@@ -46,7 +46,8 @@ recovers low-abundance organisms a best-hit approach tends to lose.
 
 - macOS (Intel or Apple Silicon) or Linux. Windows works through WSL2.
 - [Miniforge](https://github.com/conda-forge/miniforge#install) or any conda.
-- About 3× your input size in free disk, and 8 GB RAM.
+- About 3× your input size in free disk, plus ~1 GB for the software
+  environment and ~150 MB for the reference database. 8 GB RAM.
 - Internet once, to build the reference database.
 
 Every tool installs natively — no Rosetta, no emulation, no Docker.
@@ -54,7 +55,7 @@ Every tool installs natively — no Rosetta, no emulation, no Docker.
 CI exercises Linux and Apple Silicon on every change. Intel macOS is
 supported and all dependencies publish `osx-64` builds, but it is not
 covered by CI — Intel runners are too scarce to be useful. If you are on
-an Intel Mac, `nano16s test` after installing is worth the two minutes.
+an Intel Mac, `nano16s test` after installing is worth the five minutes.
 
 ## Install
 
@@ -72,7 +73,9 @@ takes roughly ten minutes. You only do it once.
 nano16s db build
 ```
 
-Check the install on the bundled demo data — six barcodes, about two minutes:
+Check the install on the bundled demo data — six barcodes, about five minutes
+(most of it Porechop inferring adapters, which costs roughly the same per
+barcode however few reads it holds):
 
 ```bash
 nano16s test
