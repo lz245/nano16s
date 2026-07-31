@@ -40,7 +40,7 @@ TOP_N = 7  # + "Other" = 8 slots, the documented cap
 def read_summary(path):
     """preprocessing_summary.csv -> list of per-barcode dicts."""
     rows = []
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             def num(k):
                 try:
@@ -81,7 +81,7 @@ def read_abundance(path, rank):
     path = Path(path)
     if not path.exists() or path.stat().st_size == 0:
         return [], {}
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         reader = csv.reader(fh, delimiter="\t")
         try:
             header = next(reader)
@@ -101,14 +101,26 @@ def read_abundance(path, rank):
                       if i != label_i and h.strip().lower() not in LINEAGE_COLUMNS]
         sample_idx = []
         for i in candidates:
+            saw_value = False
+            numeric = False
             for r in rows:
                 if i < len(r) and r[i].strip():
+                    saw_value = True
                     try:
                         float(r[i])
-                        sample_idx.append(i)
-                        break
+                        numeric = True
                     except ValueError:
-                        break
+                        numeric = False
+                    break
+            # A column that is blank in every row is still a barcode: Emu
+            # leaves cells empty for absent taxa, so a barcode that produced
+            # no classifications at all has an entirely empty column. Dropping
+            # it would erase from the report exactly the barcode most worth
+            # seeing. The header-name filter above is what keeps lineage
+            # columns out; the numeric check only has to adjudicate columns
+            # that actually contain something.
+            if numeric or not saw_value:
+                sample_idx.append(i)
         samples = [_clean_sample(header[i]) for i in sample_idx]
 
         table: dict[str, dict[str, float]] = {}
@@ -537,4 +549,8 @@ def main():
     print(f"  wrote {out}")
 
 
-main()
+# Snakemake injects a `snakemake` global before running this file. Guarding
+# on it keeps the module importable by the unit tests, which exercise the
+# parsing functions directly without a pipeline run.
+if "snakemake" in globals():
+    main()

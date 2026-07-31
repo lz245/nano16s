@@ -191,6 +191,25 @@ are skipped and it picks up where it left off.
 infers adapter sequences from your data rather than assuming them. Budget a few
 minutes per barcode.
 
+## Development
+
+Unit tests cover the parsing functions — the ones that read Emu's tables and
+NCBI's taxonomy. They need only `pytest`, no bioinformatics tools and no
+database, and run in under a second:
+
+```bash
+python -m pip install pytest
+python -m pytest test/test_parsers.py -v
+```
+
+`nano16s test` is the other half: an end-to-end run on the bundled demo that
+verifies an actual installation. Between them, the unit tests catch parsing
+regressions in seconds and the demo run catches everything else.
+
+CI runs the unit tests on Linux, Apple Silicon, and Intel macOS on every push,
+plus a full pipeline run weekly — the weekly run exists to catch a bioconda
+dependency release breaking the environment before a user hits it.
+
 ## Citing
 
 If you use nano16s, please cite the underlying tools, which do the actual work:

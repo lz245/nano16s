@@ -37,7 +37,7 @@ def subsample_barcode(src: Path, dest: Path, n_reads: int, n_files: int) -> int:
     per_file = max(1, n_reads // len(picked) + 1)
     for path in picked:
         taken = 0
-        with gzip.open(path, "rt") as fh:
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
             while taken < per_file:
                 block = [fh.readline() for _ in range(4)]
                 if not block[0]:
@@ -58,7 +58,7 @@ def subsample_barcode(src: Path, dest: Path, n_reads: int, n_files: int) -> int:
         if not part:
             continue
         out = dest / f"{dest.name}_demo_{i}.fastq.gz"
-        with gzip.open(out, "wt", compresslevel=9) as fh:
+        with gzip.open(out, "wt", compresslevel=9, encoding="utf-8") as fh:
             fh.writelines(part)
     return len(records)
 

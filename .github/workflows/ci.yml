@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly. The point is not the code — which does not change on its own —
+    # but the dependencies: bioconda moves under us, and this is what catches
+    # a tool release that breaks the environment before a user does.
+    - cron: "17 6 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Fast feedback: the parsing functions, on every platform and both ends
+  # of the supported Python range. No bioinformatics tools, no database,
+  # no conda — runs in about a minute.
+  # ---------------------------------------------------------------------
+  unit:
+    name: unit (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, macos-13]
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run unit tests
+        run: python -m pytest test/test_parsers.py -v
+
+      - name: Check every script at least parses
+        run: |
+          for f in $(git ls-files '*.py'); do
+            python -m py_compile "$f" || exit 1
+          done
+          for f in bin/nano16s install.sh; do
+            bash -n "$f" || exit 1
+          done
+
+  # ---------------------------------------------------------------------
+  # Does the documented install actually work on a clean machine? This is
+  # the check that would have caught the symlink bug, where the installed
+  # command resolved its own location to the conda prefix instead of the
+  # repository.
+  # ---------------------------------------------------------------------
+  install:
+    name: install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Every tool runs on this platform
+        run: |
+          for t in emu minimap2 samtools chopper porechop_abi NanoStat snakemake; do
+            command -v "$t" >/dev/null || { echo "MISSING: $t"; exit 1; }
+          done
+          minimap2 --version && samtools --version | head -1
+          chopper --version && porechop_abi --version
+          NanoStat --version && emu --version && snakemake --version
+
+      - name: install.sh links the command onto PATH
+        run: |
+          bash install.sh
+          hash -r
+          nano16s --version
+          nano16s --help > /dev/null
+
+      - name: The installed command resolves the repository, not the env
+        run: |
+          # Invoke through the symlink install.sh created, which is how a real
+          # user runs it. If ROOT resolves wrongly these fail with "can't open
+          # file" or "demo data not found" rather than a clean error.
+          nano16s db list
+          nano16s -d test/demo/fastq_pass -o "$RUNNER_TEMP/out" -y 2>&1 | tee /tmp/o.txt || true
+          grep -qi 'no emu database found' /tmp/o.txt
+
+      - name: The workflow graph builds
+        run: |
+          mkdir -p "$RUNNER_TEMP/fakedb"
+          printf 'tax_id\tspecies\n'  > "$RUNNER_TEMP/fakedb/taxonomy.tsv"
+          printf '>1\nACGT\n'         > "$RUNNER_TEMP/fakedb/species_taxid.fasta"
+          nano16s -d test/demo/fastq_pass -o "$RUNNER_TEMP/dry" \
+                  --db "$RUNNER_TEMP/fakedb" -n -y
+
+  # ---------------------------------------------------------------------
+  # The real thing: build the database from NCBI and run the pipeline on
+  # the bundled demo. Slow (~45 min, mostly Porechop) and depends on an
+  # external FTP server, so it is not on the push path — weekly and on
+  # demand only.
+  # ---------------------------------------------------------------------
+  pipeline:
+    name: full pipeline (weekly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Install
+        run: bash install.sh
+
+      - name: Build the reference database from NCBI
+        run: |
+          hash -r
+          nano16s db build
+          nano16s db list
+
+      - name: Run the bundled demo end to end
+        run: |
+          hash -r
+          nano16s test
+
+      - name: Keep the report and tables for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-results
+          path: |
+            /tmp/nano16s_test_*/nano16s_report.html
+            /tmp/nano16s_test_*/preprocessing_summary.csv
+            /tmp/nano16s_test_*/07_emu_combined/
+          if-no-files-found: warn
+          retention-days: 14

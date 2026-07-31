@@ -63,7 +63,7 @@ def check_preprocessing(root: Path) -> None:
     path = root / "preprocessing_summary.csv"
     if not path.exists():
         return
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
 
     if len(rows) != EXPECTED_BARCODES:
@@ -99,7 +99,7 @@ def check_abundance(root: Path) -> None:
     if not path.exists() or path.stat().st_size == 0:
         return
 
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         reader = csv.reader(fh, delimiter="\t")
         header = next(reader, None)
         if not header or header[0].startswith("#"):

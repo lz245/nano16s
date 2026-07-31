@@ -93,9 +93,9 @@ def fetch(cache: Path) -> None:
 def merge_fasta(cache: Path, dest: Path) -> int:
     """Concatenate the bacterial and archaeal FASTAs. Returns sequence count."""
     n = 0
-    with open(dest, "w") as out:
+    with open(dest, "w", encoding="utf-8") as out:
         for name in ("bacteria.16SrRNA.fna.gz", "archaea.16SrRNA.fna.gz"):
-            with gzip.open(cache / name, "rt") as fh:
+            with gzip.open(cache / name, "rt", encoding="utf-8") as fh:
                 for line in fh:
                     if line.startswith(">"):
                         n += 1
@@ -113,7 +113,7 @@ def parse_seq2taxid(cache: Path) -> dict[str, int]:
     mapping: dict[str, int] = {}
     for name in ("bacteria.16SrRNA.gbff.gz", "archaea.16SrRNA.gbff.gz"):
         accession = None
-        with gzip.open(cache / name, "rt") as fh:
+        with gzip.open(cache / name, "rt", encoding="utf-8") as fh:
             for line in fh:
                 if line.startswith("VERSION"):
                     parts = line.split()
@@ -142,17 +142,17 @@ def extract_taxonomy(cache: Path, dest: Path) -> None:
                 shutil.copyfileobj(src, out)
 
     nodes = dest / "nodes.dmp"
-    text = nodes.read_text()
+    text = nodes.read_text(encoding="utf-8")
     patched = text.replace("\tdomain\t", "\tsuperkingdom\t")
     if patched != text:
-        nodes.write_text(patched)
+        nodes.write_text(patched, encoding="utf-8")
         log("  patched nodes.dmp: rank 'domain' -> 'superkingdom'")
 
 
 def load_nodes(nodes_dmp: Path) -> dict[int, tuple[int, str]]:
     """taxid -> (parent_taxid, rank)."""
     nodes: dict[int, tuple[int, str]] = {}
-    with open(nodes_dmp) as fh:
+    with open(nodes_dmp, encoding="utf-8") as fh:
         for line in fh:
             parts = line.split("|")
             if len(parts) < 3:
@@ -240,13 +240,14 @@ def main() -> int:
     log(f"  kept {len(kept):,}  remapped {remapped:,}  dropped {dropped:,}")
 
     seq2tax_file = work / "seq2taxid.map"
-    with open(seq2tax_file, "w") as out:
+    with open(seq2tax_file, "w", encoding="utf-8") as out:
         for acc, taxid in kept.items():
             out.write(f"{acc}\t{taxid}\n")
 
     filtered = work / "ncbi_16s_filtered.fna"
     n_written = 0
-    with open(combined) as fin, open(filtered, "w") as out:
+    with open(combined, encoding="utf-8") as fin, \
+         open(filtered, "w", encoding="utf-8") as out:
         writing = False
         for line in fin:
             if line.startswith(">"):
@@ -286,8 +287,10 @@ def main() -> int:
         print(f"ERROR: expected outputs missing under {target}", file=sys.stderr)
         return 1
 
-    n_db = sum(1 for line in open(fasta) if line.startswith(">"))
-    n_taxa = sum(1 for _ in open(taxtsv)) - 1
+    with open(fasta, encoding="utf-8") as fh:
+        n_db = sum(1 for line in fh if line.startswith(">"))
+    with open(taxtsv, encoding="utf-8") as fh:
+        n_taxa = sum(1 for _ in fh) - 1
 
     manifest = {
         "built": date.today().isoformat(),
@@ -298,7 +301,8 @@ def main() -> int:
         "dropped_no_species_ancestor": dropped,
         "remapped_to_species": remapped,
     }
-    (target / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (target / "MANIFEST.json").write_text(
+        json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     if not args.keep_intermediates:
         shutil.rmtree(work)
