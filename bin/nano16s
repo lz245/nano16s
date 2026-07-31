@@ -7,7 +7,18 @@
 # =============================================================================
 set -euo pipefail
 
-BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# install.sh symlinks this script into the conda environment's bin/, so
+# ${BASH_SOURCE[0]} is usually the symlink, not the file. Resolve the chain
+# before deriving ROOT — otherwise ROOT becomes the environment prefix and
+# every path built from it (workflow/, tools/, test/) points at nothing.
+# readlink -f would do this in one line but is not available on macOS.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    LINK_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$LINK_DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 ROOT="$(dirname "$BIN_DIR")"
 SNAKEFILE="$ROOT/workflow/Snakefile"
 CONFIG="$ROOT/config/config.yaml"
