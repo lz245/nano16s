@@ -51,6 +51,11 @@ recovers low-abundance organisms a best-hit approach tends to lose.
 
 Every tool installs natively — no Rosetta, no emulation, no Docker.
 
+CI exercises Linux and Apple Silicon on every change. Intel macOS is
+supported and all dependencies publish `osx-64` builds, but it is not
+covered by CI — Intel runners are too scarce to be useful. If you are on
+an Intel Mac, `nano16s test` after installing is worth the two minutes.
+
 ## Install
 
 ```bash

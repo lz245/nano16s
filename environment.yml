@@ -11,6 +11,11 @@ name: nano16s
 channels:
   - conda-forge
   - bioconda
+  # `nodefaults` stops conda appending Anaconda's `defaults` channel from a
+  # user's global config. Without it the solve silently varies between
+  # machines, and packages can arrive from a channel whose terms of service
+  # restrict commercial and some institutional use.
+  - nodefaults
 dependencies:
   - python >=3.10
   - snakemake >=9.0,<10        # upper bound: the test harness parses snakemake's output

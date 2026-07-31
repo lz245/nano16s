@@ -27,7 +27,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, macos-13]
+        # Intel macOS (macos-13) is deliberately absent: its runners are
+        # scarce enough that jobs sat queued for over an hour, which in
+        # practice means nobody reads the result. osx-64 packages exist for
+        # every dependency but are not exercised here.
+        os: [ubuntu-latest, macos-14]
         python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
@@ -64,19 +68,34 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-14]
+    timeout-minutes: 45
     defaults:
       run:
+        # -l so the runner's preinstalled conda is initialised, matching what
+        # a user has after installing Miniforge.
         shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mamba-org/setup-micromamba@v1
-        with:
-          environment-file: environment.yml
-          cache-environment: true
+      # Deliberately NOT pre-building the environment here. An earlier version
+      # used setup-micromamba, which created and activated the environment
+      # before install.sh ran; install.sh then found the runner's separate
+      # Miniconda, built a *second* environment under it, and symlinked the
+      # command into a prefix that was not on PATH. The job failed with
+      # "nano16s: command not found" while install.sh reported success.
+      #
+      # The point of this job is to walk the path the README documents, so it
+      # lets install.sh do the whole job, exactly as a user would.
+      - name: Install the way the README says to
+        run: |
+          conda --version
+          bash install.sh
+          conda activate nano16s
+          echo "CONDA_PREFIX=$CONDA_PREFIX"
 
       - name: Every tool runs on this platform
         run: |
+          conda activate nano16s
           for t in emu minimap2 samtools chopper porechop_abi NanoStat snakemake; do
             command -v "$t" >/dev/null || { echo "MISSING: $t"; exit 1; }
           done
@@ -84,29 +103,46 @@ jobs:
           chopper --version && porechop_abi --version
           NanoStat --version && emu --version && snakemake --version
 
-      - name: install.sh links the command onto PATH
+      - name: The command is on PATH and resolves the repository, not the env
         run: |
-          bash install.sh
-          hash -r
+          conda activate nano16s
+          # Invoked through the symlink install.sh created, which is how a real
+          # user runs it. If ROOT resolves to the environment prefix instead of
+          # the checkout, these fail with "can't open file" or "demo data not
+          # found" rather than the clean error we assert below.
           nano16s --version
           nano16s --help > /dev/null
-
-      - name: The installed command resolves the repository, not the env
-        run: |
-          # Invoke through the symlink install.sh created, which is how a real
-          # user runs it. If ROOT resolves wrongly these fail with "can't open
-          # file" or "demo data not found" rather than a clean error.
           nano16s db list
-          nano16s -d test/demo/fastq_pass -o "$RUNNER_TEMP/out" -y 2>&1 | tee /tmp/o.txt || true
-          grep -qi 'no emu database found' /tmp/o.txt
+
+      - name: With no database installed it refuses clearly
+        run: |
+          conda activate nano16s
+          set +e
+          OUT="$(nano16s -d test/demo/fastq_pass -o "$RUNNER_TEMP/out" -y 2>&1)"
+          RC=$?
+          set -e
+          echo "$OUT" | tail -3
+          [ "$RC" -ne 0 ] || { echo "expected a non-zero exit"; exit 1; }
+          echo "$OUT" | grep -qi 'no emu database found'
 
       - name: The workflow graph builds
         run: |
+          conda activate nano16s
           mkdir -p "$RUNNER_TEMP/fakedb"
           printf 'tax_id\tspecies\n'  > "$RUNNER_TEMP/fakedb/taxonomy.tsv"
           printf '>1\nACGT\n'         > "$RUNNER_TEMP/fakedb/species_taxid.fasta"
           nano16s -d test/demo/fastq_pass -o "$RUNNER_TEMP/dry" \
                   --db "$RUNNER_TEMP/fakedb" -n -y
+
+      - name: No package came from Anaconda's defaults channel
+        run: |
+          conda activate nano16s
+          if conda list --json | grep -qi '"channel": *"pkgs/'; then
+            echo "A package resolved from defaults despite nodefaults:"
+            conda list | grep -i 'pkgs/' || true
+            exit 1
+          fi
+          echo "all packages from conda-forge / bioconda"
 
   # ---------------------------------------------------------------------
   # The real thing: build the database from NCBI and run the pipeline on
