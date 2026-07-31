@@ -103,7 +103,6 @@ rule emu_combine:
         done
 
         REL_COUNT=$(find "$COMBINE_INPUT" -maxdepth 1 -type l -name '*_rel-abundance*.tsv' | wc -l | tr -d ' ')
-        COUNT_COUNT=$(find "$COMBINE_INPUT" -maxdepth 1 -type l -name '*_counts*.tsv' | wc -l | tr -d ' ')
 
         if [ "$REL_COUNT" -eq 0 ]; then
             echo "# no non-empty Emu rel-abundance files available for {wildcards.rank}" > {output.rel}
@@ -111,29 +110,37 @@ rule emu_combine:
             exit 0
         fi
 
+        # Read counts are NOT a separate file. With --keep-counts, Emu writes an
+        # "estimated counts" column inside each *_rel-abundance.tsv, and
+        # `combine-outputs --counts` reads that column. Gating this on the
+        # existence of a *_counts*.tsv file — as an earlier version did — meant
+        # the counts tables were always empty placeholders.
+        #
         # Run from combined_dir so Emu's output location is deterministic even
         # across Emu versions that write to the current working directory.
         (
             cd {params.combined_dir}
             rm -f emu-combined-{wildcards.rank}.tsv emu-combined-{wildcards.rank}-counts.tsv
             emu combine-outputs "$COMBINE_INPUT" {wildcards.rank}
-            if [ "$COUNT_COUNT" -gt 0 ]; then
-                emu combine-outputs "$COMBINE_INPUT" {wildcards.rank} --counts
-            fi
+            emu combine-outputs "$COMBINE_INPUT" {wildcards.rank} --counts
         )
 
         if [ ! -f {output.rel} ] && [ -f "$COMBINE_INPUT/emu-combined-{wildcards.rank}.tsv" ]; then
             mv "$COMBINE_INPUT/emu-combined-{wildcards.rank}.tsv" {output.rel}
         fi
 
-        if [ "$COUNT_COUNT" -gt 0 ]; then
-            if [ ! -f {output.cnts} ] && [ -f "$COMBINE_INPUT/emu-combined-{wildcards.rank}-counts.tsv" ]; then
-                mv "$COMBINE_INPUT/emu-combined-{wildcards.rank}-counts.tsv" {output.cnts}
-            fi
-        else
-            echo "# no non-empty Emu count files available for {wildcards.rank}" > {output.cnts}
+        if [ ! -f {output.cnts} ] && [ -f "$COMBINE_INPUT/emu-combined-{wildcards.rank}-counts.tsv" ]; then
+            mv "$COMBINE_INPUT/emu-combined-{wildcards.rank}-counts.tsv" {output.cnts}
         fi
 
         test -s {output.rel}
         test -s {output.cnts}
+
+        # A counts table that is only the placeholder comment means the
+        # estimated-counts column was missing upstream. Fail loudly rather than
+        # shipping an empty table the README promises is populated.
+        if head -1 {output.cnts} | grep -q '^#'; then
+            echo "ERROR: no read counts for {wildcards.rank}. Emu must run with --keep-counts." >&2
+            exit 1
+        fi
         """
