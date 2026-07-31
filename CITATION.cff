@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use nano16s, please cite it along with the underlying tools listed in the README."
+title: "nano16s: Nanopore full-length 16S rRNA amplicon analysis for local computers"
+abstract: >-
+  A Snakemake workflow for taxonomic profiling of Oxford Nanopore full-length
+  16S rRNA amplicon data. Runs on an ordinary laptop or workstation with a
+  single install command and no container or cluster requirement. Includes a
+  builder for an up-to-date Emu reference database from the current NCBI 16S
+  RefSeq Targeted Loci collection.
+authors:
+  - family-names: Zhang
+    given-names: Li
+    affiliation: Mississippi State University
+license: MIT
+type: software
+version: 1.0.0
+keywords:
+  - nanopore
+  - 16S rRNA
+  - microbiome
+  - amplicon sequencing
+  - taxonomic profiling
+  - Emu
+  - Snakemake

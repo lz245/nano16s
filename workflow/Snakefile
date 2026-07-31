@@ -1,0 +1,34 @@
+# =============================================================================
+# nano16s — Nanopore full-length 16S rRNA amplicon analysis
+# =============================================================================
+# Merge per-barcode FASTQs -> QC -> adapter trim -> length/quality filter ->
+# QC -> Emu classification -> combined abundance tables -> HTML report.
+#
+# Normally invoked through the CLI, which fills in the config:
+#   nano16s -d /path/to/fastq_pass -o results/
+#
+# Directly, if you prefer:
+#   snakemake --snakefile workflow/Snakefile --configfile config/config.yaml \
+#             --cores 8 --config input_dir=... output_dir=... emu_db=...
+# =============================================================================
+
+include: "rules/common.smk"
+include: "rules/preprocess.smk"
+include: "rules/emu.smk"
+include: "rules/report.smk"
+
+
+def all_targets():
+    targets = [
+        f"{OUTPUT_DIR}/preprocessing_summary.csv",
+        f"{OUTPUT_DIR}/nano16s_report.html",
+    ]
+    for rank in EMU_RANKS:
+        targets.append(f"{OUTPUT_DIR}/07_emu_combined/emu-combined-{rank}.tsv")
+        targets.append(f"{OUTPUT_DIR}/07_emu_combined/emu-combined-{rank}-counts.tsv")
+    return targets
+
+
+rule all:
+    input:
+        all_targets()

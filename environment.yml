@@ -1,0 +1,26 @@
+# nano16s-local — runtime environment
+#
+# Create with:
+#   conda env create -f environment.yml     (or: mamba env create -f environment.yml)
+#   conda activate nano16s
+#
+# Every package below has native builds for linux-64, linux-aarch64, osx-64,
+# and osx-arm64 (or is noarch), so this installs natively on Intel and Apple
+# Silicon Macs and on Linux without emulation or containers.
+name: nano16s
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python >=3.10
+  - snakemake >=9.0,<10        # upper bound: the test harness parses snakemake's output
+  # --- preprocessing ---
+  - nanostat >=1.6
+  - porechop_abi >=0.5
+  - chopper >=0.9
+  # --- classification ---
+  - emu >=3.6
+  - minimap2 >=2.28            # required by emu internally, and by db build
+  - samtools >=1.19
+  # --- database build ---
+  - wget

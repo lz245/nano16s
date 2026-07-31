@@ -1,0 +1,64 @@
+# =============================================================================
+# nano16s-local — configuration
+# =============================================================================
+# Every value here can be overridden on the command line:
+#   nano16s -d ./fastq_pass --min-quality 12
+# Run `nano16s --help` for the full list.
+
+# --- Input / output ---
+# Both are normally supplied by the CLI. input_dir is required.
+input_dir: ""
+output_dir: "results"
+
+# --- Sample discovery ---
+# Empty means: auto-detect every barcode* directory inside input_dir.
+# Or list them explicitly: ["barcode01", "barcode02", "barcode05"]
+samples: []
+
+# --- Read filtering (Chopper) ---
+# Full-length 16S is ~1500 bp. The window below keeps near-full-length reads
+# and discards fragments and concatemers. Widen it if you are amplifying a
+# different region.
+min_length: 1000
+max_length: 2000
+min_quality: 10          # Phred; ~Q10 is a reasonable floor for modern ONT
+
+# --- Emu database ---
+# Built by `nano16s db build`. The CLI fills this in from the installed
+# database unless you pass --db explicitly.
+emu_db: ""
+
+# --- Taxonomic ranks to summarise ---
+emu_ranks:
+  - species
+  - genus
+  - phylum
+
+# --- Per-rule resources ---
+# Sized for a laptop or workstation, not a cluster. Snakemake caps each rule's
+# threads at the total you give with --cores, so these are upper bounds rather
+# than reservations: on a 4-core machine nothing here will oversubscribe.
+#
+# time_min is unused locally (no scheduler) but is kept so the same rule files
+# work unchanged under a cluster profile.
+resources:
+  merge:
+    cpus: 1
+    mem_mb: 2000
+    time_min: 120
+  nanostat:
+    cpus: 1
+    mem_mb: 2000
+    time_min: 60
+  porechop:
+    cpus: 8            # the slowest stage; give it what you have
+    mem_mb: 8000
+    time_min: 240
+  chopper:
+    cpus: 4
+    mem_mb: 2000
+    time_min: 60
+  emu:
+    cpus: 8
+    mem_mb: 8000
+    time_min: 120

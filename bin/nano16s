@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# =============================================================================
+# nano16s — Nanopore full-length 16S rRNA amplicon analysis
+# =============================================================================
+# A real executable, not a shell alias, so it works inside scripts, cron jobs,
+# and non-interactive shells.
+# =============================================================================
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$BIN_DIR")"
+SNAKEFILE="$ROOT/workflow/Snakefile"
+CONFIG="$ROOT/config/config.yaml"
+VERSION="1.0.0"
+
+DB_ROOT="${NANO16S_DB:-$HOME/.nano16s/db}"
+
+# --- defaults -----------------------------------------------------------------
+INPUT_DIR=""
+OUTPUT_DIR="results"
+DB=""
+MIN_LENGTH=1000
+MAX_LENGTH=2000
+MIN_QUALITY=10
+CORES=""
+DRY_RUN=""
+ASSUME_YES=""
+EXTRA=()
+
+# -----------------------------------------------------------------------------
+usage() {
+    cat <<'HELP'
+nano16s — Nanopore full-length 16S rRNA amplicon analysis
+
+USAGE
+    nano16s -d <fastq_pass_dir> [OPTIONS]
+    nano16s db build [--version YYYY.MM]
+    nano16s db list
+    nano16s test
+    nano16s --version
+
+The pipeline: merge per-barcode FASTQs, QC the raw reads, trim adapters
+(Porechop_ABI), filter by length and quality (Chopper), QC again, then
+classify with Emu and combine the per-barcode results into abundance tables.
+
+REQUIRED
+    -d, --input-dir DIR     fastq_pass/ directory containing barcode* subdirs
+
+OPTIONS
+    -o, --output-dir DIR    where results go (default: results)
+        --db DIR            Emu database (default: newest under ~/.nano16s/db)
+        --min-length INT    minimum read length, bp (default: 1000)
+        --max-length INT    maximum read length, bp (default: 2000)
+        --min-quality INT   minimum mean Phred quality (default: 10)
+    -c, --cores INT         CPU cores to use (default: all but one)
+    -n, --dry-run           show what would run, then stop
+    -y, --yes               don't prompt for confirmation
+    -h, --help              this message
+
+EXAMPLES
+    # first time: build the reference database (~10 min, once)
+    nano16s db build
+
+    # check the install works, using the bundled demo data
+    nano16s test
+
+    # analyse your own run
+    nano16s -d /path/to/fastq_pass -o my_results
+
+    # keep only near-full-length, higher-quality reads
+    nano16s -d ./fastq_pass --min-quality 12 --min-length 1300 --max-length 1800
+
+OUTPUT
+    results/
+      preprocessing_summary.csv          reads surviving each stage, per barcode
+      07_emu_combined/
+        emu-combined-species.tsv         relative abundance, species level
+        emu-combined-species-counts.tsv  read counts, species level
+        ... and the same for genus and phylum
+      nano16s_report.html                self-contained summary; open it first
+HELP
+    exit 0
+}
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+# Every value-taking flag routes through this, so a truncated command line
+# produces a usable message instead of bash's "$2: unbound variable".
+need_value() {
+    [[ $# -ge 2 && -n "${2:-}" ]] || die "$1 requires a value."
+}
+
+detect_cores() {
+    local n
+    n="$( { command -v nproc >/dev/null && nproc; } \
+          || sysctl -n hw.ncpu 2>/dev/null \
+          || echo 2 )"
+    (( n > 1 )) && echo $(( n - 1 )) || echo 1
+}
+
+# Newest database directory under DB_ROOT, by version-sorted name.
+resolve_db() {
+    local newest
+    [[ -d "$DB_ROOT" ]] || return 1
+    newest="$(find "$DB_ROOT" -maxdepth 2 -type d -name 'ncbi_16s' 2>/dev/null | sort -r | head -1)"
+    [[ -n "$newest" ]] || return 1
+    echo "$newest"
+}
+
+# =============================================================================
+# subcommands
+# =============================================================================
+cmd_db() {
+    local action="${1:-}"
+    shift || true
+    case "$action" in
+        build)
+            local version=""
+            while [[ $# -gt 0 ]]; do
+                case "$1" in
+                    --version) need_value "$@"; version="$2"; shift 2 ;;
+                    *) die "unknown option for 'db build': $1" ;;
+                esac
+            done
+            [[ -n "$version" ]] || version="$(date +%Y.%m)"
+            command -v emu >/dev/null || die "'emu' not found. Run: conda activate nano16s"
+            exec python3 "$ROOT/tools/build_emu_db.py" --outdir "$DB_ROOT/$version"
+            ;;
+        list)
+            [[ -d "$DB_ROOT" ]] || { echo "No databases installed under $DB_ROOT"; echo "Build one with:  nano16s db build"; exit 0; }
+            local found=0
+            echo "Databases under $DB_ROOT:"
+            while IFS= read -r d; do
+                found=1
+                local n manifest
+                n="$(grep -c '^>' "$d/species_taxid.fasta" 2>/dev/null || echo '?')"
+                manifest="$d/MANIFEST.json"
+                if [[ -f "$manifest" ]]; then
+                    printf "  %-40s %s sequences, built %s\n" \
+                        "${d#$DB_ROOT/}" "$n" \
+                        "$(sed -n 's/.*"built": "\([^"]*\)".*/\1/p' "$manifest")"
+                else
+                    printf "  %-40s %s sequences\n" "${d#$DB_ROOT/}" "$n"
+                fi
+            done < <(find "$DB_ROOT" -maxdepth 2 -type d -name 'ncbi_16s' | sort)
+            (( found )) || { echo "  (none)"; echo "Build one with:  nano16s db build"; }
+            ;;
+        ""|-h|--help)
+            echo "usage: nano16s db build [--version YYYY.MM]"
+            echo "       nano16s db list"
+            ;;
+        *)
+            die "unknown 'db' action: $action (expected 'build' or 'list')"
+            ;;
+    esac
+    exit 0
+}
+
+cmd_test() {
+    local demo="$ROOT/test/demo/fastq_pass"
+    [[ -d "$demo" ]] || die "bundled demo data not found at $demo"
+    local out
+    out="$(mktemp -d "${TMPDIR:-/tmp}/nano16s_test_XXXXXX")"
+    echo "Running the bundled demo dataset."
+    echo "  input:  $demo"
+    echo "  output: $out"
+    echo ""
+    "$BIN_DIR/nano16s" -d "$demo" -o "$out" -y "$@"
+    echo ""
+    exec python3 "$ROOT/test/check_demo.py" "$out"
+}
+
+# =============================================================================
+# dispatch
+# =============================================================================
+case "${1:-}" in
+    db)              shift; cmd_db "$@" ;;
+    test)            shift; cmd_test "$@" ;;
+    -h|--help|"")    usage ;;
+    --version)       echo "nano16s $VERSION"; exit 0 ;;
+esac
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--input-dir)   need_value "$@"; INPUT_DIR="$2";   shift 2 ;;
+        -o|--output-dir)  need_value "$@"; OUTPUT_DIR="$2";  shift 2 ;;
+        --db)             need_value "$@"; DB="$2";          shift 2 ;;
+        --min-length)     need_value "$@"; MIN_LENGTH="$2";  shift 2 ;;
+        --max-length)     need_value "$@"; MAX_LENGTH="$2";  shift 2 ;;
+        --min-quality)    need_value "$@"; MIN_QUALITY="$2"; shift 2 ;;
+        -c|--cores)       need_value "$@"; CORES="$2";       shift 2 ;;
+        -n|--dry-run)     DRY_RUN="--dry-run";               shift ;;
+        -y|--yes)         ASSUME_YES=1;                      shift ;;
+        -h|--help)        usage ;;
+        --classifier)     die "--classifier was removed. This build runs Emu only; minimap2 support is planned." ;;
+        *)                EXTRA+=("$1");                     shift ;;
+    esac
+done
+
+# --- validate ------------------------------------------------------------------
+[[ -n "$INPUT_DIR" ]] || die "-d/--input-dir is required. Run 'nano16s --help'."
+[[ -d "$INPUT_DIR" ]] || die "input directory not found: $INPUT_DIR"
+
+BARCODES="$(find "$INPUT_DIR" -maxdepth 1 -type d -name 'barcode*' | wc -l | tr -d ' ')"
+(( BARCODES > 0 )) || die "no barcode* directories inside $INPUT_DIR
+       Point -d at the fastq_pass folder that contains barcode01/, barcode02/, ..."
+
+if [[ -z "$DB" ]]; then
+    DB="$(resolve_db)" || die "no Emu database found under $DB_ROOT
+       Build one with:  nano16s db build
+       Or point at an existing one with --db /path/to/db"
+fi
+[[ -d "$DB" ]] || die "database directory not found: $DB"
+[[ -f "$DB/taxonomy.tsv" && -f "$DB/species_taxid.fasta" ]] || \
+    die "$DB does not look like an Emu database (expected taxonomy.tsv and species_taxid.fasta)"
+
+[[ -n "$CORES" ]] || CORES="$(detect_cores)"
+
+# Absolute output path. Porechop changes directory internally, so a relative
+# path would not resolve once it does.
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+
+# --- preflight -----------------------------------------------------------------
+INPUT_MB="$(du -sm "$INPUT_DIR" 2>/dev/null | cut -f1)"
+# Intermediates roughly triple the input before the final tables are written.
+NEED_MB=$(( INPUT_MB * 3 ))
+FREE_MB="$(df -m "$OUTPUT_DIR" | tail -1 | awk '{print $4}')"
+
+cat <<EOF
+nano16s $VERSION
+  input       $INPUT_DIR ($BARCODES barcodes, ${INPUT_MB} MB)
+  output      $OUTPUT_DIR
+  database    $DB
+  filtering   Q>=$MIN_QUALITY, ${MIN_LENGTH}-${MAX_LENGTH} bp
+  cores       $CORES
+EOF
+
+if (( NEED_MB > FREE_MB )); then
+    echo ""
+    echo "  WARNING: this run needs roughly ${NEED_MB} MB but only ${FREE_MB} MB is free."
+    echo "           Intermediates in 01_merged/ and 03_trimmed/ are the bulk of it;"
+    echo "           you can delete them once the run finishes."
+    if [[ -z "$ASSUME_YES" && -t 0 ]]; then
+        read -r -p "  Continue anyway? [y/N] " reply
+        [[ "$reply" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
+    fi
+fi
+echo ""
+
+# --- run -------------------------------------------------------------------------
+# An array, not a string through eval, so paths containing spaces survive.
+CMD=(
+    snakemake
+    --snakefile "$SNAKEFILE"
+    --configfile "$CONFIG"
+    --cores "$CORES"
+    --config
+        "input_dir=$INPUT_DIR"
+        "output_dir=$OUTPUT_DIR"
+        "emu_db=$DB"
+        "min_length=$MIN_LENGTH"
+        "max_length=$MAX_LENGTH"
+        "min_quality=$MIN_QUALITY"
+)
+[[ -n "$DRY_RUN" ]] && CMD+=("$DRY_RUN")
+(( ${#EXTRA[@]} )) && CMD+=("${EXTRA[@]}")
+
+"${CMD[@]}"
+
+if [[ -z "$DRY_RUN" ]]; then
+    echo ""
+    echo "Done. Results in $OUTPUT_DIR"
+    [[ -f "$OUTPUT_DIR/nano16s_report.html" ]] && \
+        echo "Open the summary:  $OUTPUT_DIR/nano16s_report.html"
+fi
