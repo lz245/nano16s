@@ -59,7 +59,7 @@ an Intel Mac, `nano16s test` after installing is worth the two minutes.
 ## Install
 
 ```bash
-git clone https://github.com/<user>/nano16s-local.git
+git clone https://github.com/lz245/nano16s-local.git
 cd nano16s-local
 bash install.sh
 conda activate nano16s
@@ -211,9 +211,11 @@ python -m pytest test/test_parsers.py -v
 verifies an actual installation. Between them, the unit tests catch parsing
 regressions in seconds and the demo run catches everything else.
 
-CI runs the unit tests on Linux, Apple Silicon, and Intel macOS on every push,
-plus a full pipeline run weekly — the weekly run exists to catch a bioconda
-dependency release breaking the environment before a user hits it.
+CI runs the unit tests on Linux and Apple Silicon on every push, and also
+installs from scratch on both to check that the documented install path
+still works. A full pipeline run — NCBI database build plus the demo —
+runs weekly; its job is to catch a bioconda dependency release breaking
+the environment before a user hits it.
 
 ## Citing
 
