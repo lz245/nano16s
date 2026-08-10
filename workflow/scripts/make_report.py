@@ -444,6 +444,21 @@ def main():
                                      f"{r['filtered']:,} reads after filtering. Diversity "
                                      f"estimates from this few reads are unreliable."))
 
+    # One barcode retaining little is usually that sample. Every barcode
+    # retaining little is usually the length window not matching the amplicon —
+    # a setting to change rather than bad data. The per-barcode messages above
+    # cannot tell those apart, and saying "not a pipeline fault" to someone whose
+    # window is simply wrong for their amplicon sends them looking in the wrong
+    # place. Lead with the run-level signal when it is present.
+    if len(rows) > 1 and total_raw and retention < 25:
+        warnings.insert(0, ("bad",
+            f"<strong>The run as a whole retained {retention:.0f}% of its reads</strong> "
+            f"({total_raw:,} → {total_kept:,}). When every barcode loses this much, the "
+            f"length window usually does not match the amplicon. Currently keeping "
+            f"{params.min_length}–{params.max_length} bp — full-length 16S is ~1,500 bp, "
+            f"V3–V4 ~460 bp, V4 ~250 bp. If that window is wrong for your amplicon, "
+            f"set <code>--min-length</code> and <code>--max-length</code> and re-run."))
+
     # --- assemble -----------------------------------------------------------
     comp_svg, legend, ranked = composition_svg(samples, species, "species")
     gcomp_svg, glegend, _ = composition_svg(samples, genus, "genus")
