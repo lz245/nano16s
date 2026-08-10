@@ -20,5 +20,8 @@ rule report:
         min_length  = config["min_length"],
         max_length  = config["max_length"],
         min_quality = config["min_quality"],
+        # Set by the nano16s CLI. Empty when Snakemake is run directly, in which
+        # case the report cites the tool by name without a version.
+        version     = config.get("nano16s_version", ""),
     script:
         "../scripts/make_report.py"

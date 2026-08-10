@@ -273,6 +273,7 @@ CMD=(
         "min_length=$MIN_LENGTH"
         "max_length=$MAX_LENGTH"
         "min_quality=$MIN_QUALITY"
+        "nano16s_version=$VERSION"
 )
 [[ -n "$DRY_RUN" ]] && CMD+=("$DRY_RUN")
 (( ${#EXTRA[@]} )) && CMD+=("${EXTRA[@]}")
