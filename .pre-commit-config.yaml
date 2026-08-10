@@ -1,0 +1,43 @@
+# Optional, but recommended:
+#
+#     pip install pre-commit && pre-commit install
+#
+# These are the cheap checks — the ones worth catching before a commit rather
+# than in review. The pipeline's real tests (`pytest`, `nano16s test`) are not
+# here: they belong in CI, and a hook slow enough to be annoying gets bypassed.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # CRLF endings break every shell script and the heredocs inside the
+      # Snakemake rules. .gitattributes prevents this on checkout; this catches
+      # anything an editor introduces locally.
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        # The bundled demo FASTQs are legitimately ~1 MB each; sequencing data
+        # beyond that does not belong in the repository.
+        args: [--maxkb=2048]
+      - id: check-executables-have-shebangs
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  # Catches quoting and word-splitting mistakes in the CLI, which is where most
+  # of the argument handling lives and where there is no unit-test coverage.
+  #
+  # shellcheck-py rather than the upstream shellcheck-precommit hook: the latter
+  # runs shellcheck inside Docker, and requiring Docker would contradict the
+  # thing this project is for.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        files: '(\.sh$|^bin/nano16s$)'

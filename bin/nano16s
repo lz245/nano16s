@@ -148,10 +148,10 @@ cmd_db() {
                 manifest="$d/MANIFEST.json"
                 if [[ -f "$manifest" ]]; then
                     printf "  %-40s %s sequences, built %s\n" \
-                        "${d#$DB_ROOT/}" "$n" \
+                        "${d#"$DB_ROOT"/}" "$n" \
                         "$(sed -n 's/.*"built": "\([^"]*\)".*/\1/p' "$manifest")"
                 else
-                    printf "  %-40s %s sequences\n" "${d#$DB_ROOT/}" "$n"
+                    printf "  %-40s %s sequences\n" "${d#"$DB_ROOT"/}" "$n"
                 fi
             done < <(find "$DB_ROOT" -maxdepth 2 -type d -name 'ncbi_16s' | sort)
             (( found )) || { echo "  (none)"; echo "Build one with:  nano16s db build"; }
