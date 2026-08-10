@@ -195,6 +195,26 @@ length window. Check the report's filtering section, then widen
 **The run stopped partway** — just run the same command again. Completed steps
 are skipped and it picks up where it left off.
 
+**On WSL2: `has older modification time`, or `the counts table … is empty`** —
+WSL's clock drifts from the Windows host and can resynchronise mid-run. That
+leaves a file with a timestamp behind its own input, which Snakemake treats as a
+corrupted build, so it deletes the output and stops — often after a long run.
+
+Fix it from PowerShell, then re-run the same command:
+
+```powershell
+wsl --shutdown
+```
+
+Completed work is kept, so the re-run finishes in seconds rather than repeating
+the pipeline. Check whether the clocks have drifted with `date` in Linux against
+`Get-Date` in PowerShell — more than a second or two apart is the cause. Keeping
+the machine from sleeping during a run avoids it.
+
+**`no .fastq.gz files in …`** — that barcode directory is empty. Either the copy
+was incomplete, or `-d` points at the wrong place. If the barcode genuinely
+produced nothing, remove the directory and re-run.
+
 **Porechop is slow** — it is the slowest stage by a wide margin, because it
 infers adapter sequences from your data rather than assuming them. Budget a few
 minutes per barcode.

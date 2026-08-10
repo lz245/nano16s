@@ -139,8 +139,27 @@ rule emu_combine:
         # A counts table that is only the placeholder comment means the
         # estimated-counts column was missing upstream. Fail loudly rather than
         # shipping an empty table the README promises is populated.
+        #
+        # Two quite different causes land here, so name both. The second is
+        # easy to misread as the first: on WSL2 the guest clock drifts from the
+        # host and can resynchronise mid-run, leaving an output file with a
+        # timestamp behind its own input. Snakemake treats that as a corrupted
+        # build and deletes the output -- after this rule has already written
+        # it -- so the run fails reporting missing counts when the real cause
+        # was the clock.
         if head -1 {output.cnts} | grep -q '^#'; then
-            echo "ERROR: no read counts for {wildcards.rank}. Emu must run with --keep-counts." >&2
+            echo "ERROR: the counts table for {wildcards.rank} is empty." >&2
+            echo "" >&2
+            echo "  Two things cause this:" >&2
+            echo "" >&2
+            echo "  1. Emu ran without --keep-counts, so no estimated-counts" >&2
+            echo "     column was written." >&2
+            echo "" >&2
+            echo "  2. On WSL2, the clock drifted during the run and Snakemake" >&2
+            echo "     removed the output as suspected clock skew. Look further" >&2
+            echo "     up the log for 'has older modification time'. If it is" >&2
+            echo "     there, run 'wsl --shutdown' from PowerShell and re-run;" >&2
+            echo "     completed work is kept, so it finishes quickly." >&2
             exit 1
         fi
         """
