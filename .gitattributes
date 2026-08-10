@@ -1,0 +1,29 @@
+# The pipeline is executed by bash, including the heredocs embedded in the
+# Snakemake rules. A CRLF checkout breaks all of it at once, with an error that
+# gives no clue as to the cause:
+#
+#     syntax error near unexpected token `$'{\r''
+#
+# Windows users reach this pipeline through WSL2, so a Windows checkout with a
+# Windows editor is a normal way to arrive here. Pin every text file to LF so
+# that cannot happen.
+* text=auto eol=lf
+
+# Explicit, so the intent survives future edits to the pattern above.
+*.sh        text eol=lf
+*.smk       text eol=lf
+*.py        text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.md        text eol=lf
+*.cff       text eol=lf
+Snakefile   text eol=lf
+bin/nano16s text eol=lf
+
+# Sequencing data and archives must never be line-ending converted — doing so
+# corrupts them silently.
+*.gz        binary
+*.fastq     binary
+*.fna       binary
+*.bam       binary
+*.bai       binary
