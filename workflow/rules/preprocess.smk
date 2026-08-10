@@ -25,11 +25,25 @@ rule merge:
         runtime       = config["resources"]["merge"]["time_min"],
     shell:
         """
+        # nullglob so an empty directory yields an empty array rather than the
+        # literal pattern. Without it the array holds one element -- the
+        # unexpanded glob -- and the single-file branch below fails with
+        # "cp: cannot stat '.../*.fastq.gz'", which reads like a corrupted path
+        # rather than an empty directory.
+        shopt -s nullglob
         FASTQ_FILES=( "{input.barcode_dir}"/*.fastq.gz )
+
+        if [ "${{#FASTQ_FILES[@]}}" -eq 0 ]; then
+            echo "ERROR: no .fastq.gz files in {input.barcode_dir}" >&2
+            echo "  Every barcode directory must contain at least one .fastq.gz file." >&2
+            echo "  If this barcode produced no reads, remove the directory and re-run." >&2
+            exit 1
+        fi
+
         if [ "${{#FASTQ_FILES[@]}}" -eq 1 ]; then
             cp "${{FASTQ_FILES[0]}}" {output}
         else
-            cat "{input.barcode_dir}"/*.fastq.gz > {output}
+            cat "${{FASTQ_FILES[@]}}" > {output}
         fi
         """
 
