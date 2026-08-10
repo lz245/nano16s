@@ -16,7 +16,6 @@ requires.
 import csv
 import html
 import json
-import os
 import subprocess
 from datetime import datetime
 from pathlib import Path

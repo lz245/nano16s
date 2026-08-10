@@ -1,0 +1,76 @@
+name: Bug report
+description: Something did not work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The version and environment details below are
+        what usually determine whether a problem can be reproduced, so please
+        fill them in even if they seem unrelated.
+
+  - type: textarea
+    id: command
+    attributes:
+      label: What did you run?
+      description: The exact command, so it can be reproduced.
+      placeholder: nano16s -d ~/data/fastq_pass -o ~/results
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: >-
+        Please paste the error text rather than describing it — the exact
+        wording usually identifies the cause.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Include whether you are using WSL2 — several issues are specific to it.
+      placeholder: Windows 11 + WSL2 (Ubuntu 24.04) / macOS 14 (Apple Silicon) / Ubuntu 22.04
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: |
+        Output of:
+        ```
+        nano16s --version
+        conda list -n nano16s | grep -E "emu|minimap2|chopper|porechop|snakemake"
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: database
+    attributes:
+      label: Database
+      description: Output of `nano16s db list`.
+      placeholder: 2026.08/ncbi_16s   27732 sequences, built 2026-08-05
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I ran `nano16s test` and noted whether it passes
+        - label: I checked the Troubleshooting section of the README

@@ -1,0 +1,28 @@
+# Linting for the Python parts of nano16s (report generation, database build,
+# tests). The shell CLI and the Snakemake rules are not covered here.
+#
+# The rule set is deliberately conservative: pyflakes (F) plus the pycodestyle
+# error subset (E4/E7/E9), which is ruff's own default. Those catch genuine
+# defects -- undefined names, unused imports, syntax problems -- without
+# imposing a style rewrite on existing code.
+#
+# The intent is that this passes cleanly from the day it lands, so CI stays
+# green and the check keeps being trusted. Tightening it later is easy; a
+# linter that fails on arrival tends to get switched off instead.
+
+line-length = 100
+target-version = "py310"     # matches `python >=3.10` in environment.yml
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+
+[lint.per-file-ignores]
+# Snakemake injects `snakemake` as a global before executing a script, so the
+# name is legitimately undefined at import time.
+"workflow/scripts/*.py" = ["F821"]
+
+[format]
+# Not enabled in CI. Recorded so anyone who does run `ruff format` produces
+# output consistent with the existing code rather than reflowing the repo.
+quote-style = "double"
+indent-style = "space"

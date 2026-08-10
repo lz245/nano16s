@@ -1,0 +1,22 @@
+name: Question or suggestion
+description: Ask how something works, or propose a change
+labels: [question]
+body:
+  - type: textarea
+    id: body
+    attributes:
+      label: What would you like to know, or suggest?
+      description: >-
+        For suggestions, it helps to say what you were trying to do — the
+        underlying goal often has a simpler answer than the change itself.
+    validations:
+      required: true
+
+  - type: input
+    id: context
+    attributes:
+      label: Anything relevant about your data?
+      description: >-
+        Amplicon region, read counts, number of barcodes — only if it bears on
+        the question.
+      placeholder: full-length 16S, 24 barcodes, ~2M reads
