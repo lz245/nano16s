@@ -15,6 +15,7 @@ Run with:
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -23,7 +24,7 @@ sys.path.insert(0, str(ROOT / "workflow" / "scripts"))
 
 from make_perf_report import (  # noqa: E402
     MIN_MEDIAN_Q, MIN_READS, MIN_RETENTION_PCT,
-    build_rows, dur, find_flags, parse_nanostat, read_benchmarks,
+    build_rows, dur, ffix, find_flags, fint, parse_nanostat, read_benchmarks,
     stage_bars_svg, timeline_svg,
 )
 
@@ -269,6 +270,64 @@ def test_sub_second_durations_survive():
     assert dur(None) == "-"
     assert dur(90) == "1m 30s"
     assert dur(3725) == "1h 2m 5s"
+
+
+def test_a_recorded_zero_is_not_shown_as_a_measurement():
+    """0.0 means "finished inside the sampling interval", not "took no time".
+
+    Printed as "0.0s" beside a non-zero wall time it reads as a broken
+    number, which is how the chopper row looked.
+    """
+    assert dur(0) == "<0.1s"
+    assert dur(0.0) == "<0.1s"
+
+
+def test_read_counts_lose_the_nanostat_decimal():
+    """REGRESSION: read counts rendered as '993.0' and '1,059.0'.
+
+    NanoStat prints counts as floats. Formatting them with one decimal place
+    put a tenth of a read in every row of the table.
+    """
+    assert fint(993.0) == "993"
+    assert fint(1059) == "1,059"
+    assert fint(None) == "-"
+
+
+def test_measurements_keep_a_fixed_precision():
+    """REGRESSION: a quality column mixing '15', '15.1' and '18' misaligns.
+
+    Integral floats were shortened to bare integers, so decimal points did
+    not line up down the column.
+    """
+    assert ffix(15.0) == "15.0"
+    assert ffix(15.14) == "15.1"
+    assert ffix(18) == "18.0"
+    assert ffix(None) == "-"
+
+
+def test_chart_scale_spans_cpu_time_when_it_exceeds_wall():
+    """REGRESSION: bars ran off the panel and were clipped.
+
+    The x-axis was scaled to peak wall time while the CPU bar was drawn on
+    the same scale. Any threaded stage spends more CPU-seconds than elapsed
+    seconds, so porechop and emu overflowed the plot area entirely.
+    """
+    rollup = [
+        {"stage": "porechop", "jobs": 6, "wall_total": 102.0,
+         "cpu_total": 239.0, "wall_mean": 17.0, "wall_max": 22.0,
+         "max_rss_mb": 100.0, "sec_per_1k_reads": 15.3},
+        {"stage": "chopper", "jobs": 6, "wall_total": 0.6,
+         "cpu_total": 0.0, "wall_mean": 0.1, "wall_max": 0.1,
+         "max_rss_mb": 9.0, "sec_per_1k_reads": 0.09},
+    ]
+    svg = stage_bars_svg(rollup)
+    # Widths are relative to the plot area, which is width - pad_l - pad_r.
+    plot_w = 720 - 118 - 84
+    widths = [float(w) for w in re.findall(r'width="([\d.]+)"', svg)]
+    assert widths, "expected bars to be drawn"
+    assert max(widths) <= plot_w + 0.5, (
+        f"a bar of {max(widths):.1f}px overflows the {plot_w}px plot area"
+    )
 
 
 def test_charts_handle_no_data():

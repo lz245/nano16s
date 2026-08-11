@@ -154,6 +154,11 @@ def dur(seconds):
     """Compact duration. Sub-second values are real here, unlike log scraping."""
     if seconds is None:
         return "-"
+    # Anything that rounds to zero finished inside the sampling interval; it
+    # did not take no time. Printing "0.0s" beside a non-zero wall time reads
+    # as a broken measurement, so say what is actually known.
+    if seconds < 0.05:
+        return "<0.1s"
     if seconds < 1:
         return f"{seconds:.1f}s"
     seconds = int(round(seconds))
@@ -166,11 +171,33 @@ def dur(seconds):
     return f"{s}s"
 
 
-def fnum(v, dp=1):
+def axis(seconds):
+    """Duration for an axis tick, where the origin is genuinely zero.
+
+    dur() reports a rounded-down measurement as "<0.1s", which is right for a
+    job that ran and wrong for the left edge of a chart.
+    """
+    return "0s" if seconds <= 0 else dur(seconds)
+
+
+def fint(v):
+    """Counts and lengths. NanoStat prints '993.0'; a read count has no tenths."""
     if v is None or v == "":
         return "-"
-    if isinstance(v, float) and v.is_integer():
-        return f"{int(v):,}"
+    if isinstance(v, (int, float)):
+        return f"{int(round(v)):,}"
+    return str(v)
+
+
+def ffix(v, dp=1):
+    """Measurements, always to the same precision.
+
+    Quality scores mixing "15" and "15.1" down a column read as different
+    kinds of number and break the decimal alignment that makes a column
+    scannable.
+    """
+    if v is None or v == "":
+        return "-"
     if isinstance(v, (int, float)):
         return f"{v:,.{dp}f}"
     return str(v)
@@ -190,20 +217,29 @@ def pct(v, dp=1):
 # ---------------------------------------------------------------------------
 
 def stage_bars_svg(rollup):
-    """Wall time per stage, with CPU time drawn inside it.
+    """Wall time and CPU time per stage, as a pair of bars on each row.
 
-    Two bars on one baseline rather than side by side: the question is what
-    fraction of each stage's elapsed time was actual computation, and nested
-    bars answer that by inspection.
+    Not nested bars. A threaded stage spends more CPU-seconds than it spends
+    elapsed seconds, so CPU is routinely the larger of the two and drawing it
+    inside wall time both inverts the encoding and overflows any axis scaled
+    to wall time alone. The scale below spans whichever value is larger, and
+    the two bars share a baseline so the ratio between them stays readable.
     """
     if not rollup:
         return "<p class='empty'>No benchmark data available.</p>"
 
-    row_h, gap, pad_l, pad_r, pad_t = 26, 8, 118, 92, 28
+    bar_h, pair_gap, row_gap = 9, 3, 12
+    row_h = bar_h * 2 + pair_gap
+    pad_l, pad_r, pad_t = 118, 84, 28
     width = 720
     plot_w = width - pad_l - pad_r
-    height = pad_t + len(rollup) * (row_h + gap) + 10
-    peak = max((r["wall_total"] for r in rollup), default=1) or 1
+    height = pad_t + len(rollup) * (row_h + row_gap) + 10
+
+    # Span both series: CPU exceeds wall wherever threads are used.
+    peak = max(
+        max((r["wall_total"] for r in rollup), default=0),
+        max((r["cpu_total"] or 0 for r in rollup), default=0),
+    ) or 1
 
     parts = [
         f'<svg viewBox="0 0 {width} {height}" role="img" '
@@ -214,22 +250,24 @@ def stage_bars_svg(rollup):
         parts.append(f'<line class="grid" x1="{x:.1f}" y1="{pad_t - 8}" '
                      f'x2="{x:.1f}" y2="{height - 10}"/>')
         parts.append(f'<text class="tick" x="{x:.1f}" y="{pad_t - 12}" '
-                     f'text-anchor="middle">{dur(peak * frac)}</text>')
+                     f'text-anchor="middle">{axis(peak * frac)}</text>')
 
     for i, r in enumerate(rollup):
-        y = pad_t + i * (row_h + gap)
+        y = pad_t + i * (row_h + row_gap)
         wall_w = plot_w * (r["wall_total"] / peak)
         cpu_w = plot_w * ((r["cpu_total"] or 0) / peak)
-        parts.append(f'<text class="rowlab" x="{pad_l - 10}" y="{y + 17}" '
+        parts.append(f'<text class="rowlab" x="{pad_l - 10}" y="{y + row_h - 4}" '
                      f'text-anchor="end">{esc(r["stage"])}</text>')
-        parts.append(f'<rect class="raw" x="{pad_l}" y="{y + 4}" '
-                     f'width="{max(wall_w, 1):.1f}" height="{row_h - 8}" rx="4"/>')
-        parts.append(f'<rect class="kept" x="{pad_l}" y="{y + 4}" '
-                     f'width="{max(cpu_w, 1):.1f}" height="{row_h - 8}" rx="4"/>')
-        parts.append(f'<title>{esc(r["stage"])}: {dur(r["wall_total"])} wall, '
-                     f'{dur(r["cpu_total"])} CPU across {r["jobs"]} jobs</title>')
-        parts.append(f'<text class="rowval" x="{pad_l + plot_w + 8}" y="{y + 17}">'
-                     f'{dur(r["wall_total"])}</text>')
+        parts.append(f'<rect class="raw" x="{pad_l}" y="{y}" '
+                     f'width="{max(wall_w, 1):.1f}" height="{bar_h}" rx="2">'
+                     f'<title>{esc(r["stage"])}: {dur(r["wall_total"])} wall '
+                     f'across {r["jobs"]} jobs</title></rect>')
+        parts.append(f'<rect class="kept" x="{pad_l}" y="{y + bar_h + pair_gap}" '
+                     f'width="{max(cpu_w, 1):.1f}" height="{bar_h}" rx="2">'
+                     f'<title>{esc(r["stage"])}: {dur(r["cpu_total"])} CPU'
+                     f'</title></rect>')
+        parts.append(f'<text class="rowval" x="{pad_l + plot_w + 8}" '
+                     f'y="{y + row_h - 4}">{dur(r["wall_total"])}</text>')
     parts.append("</svg>")
     return "".join(parts)
 
@@ -266,7 +304,7 @@ def timeline_svg(jobs, stages):
         parts.append(f'<line class="grid" x1="{x:.1f}" y1="{pad_t - 8}" '
                      f'x2="{x:.1f}" y2="{height - 14}"/>')
         parts.append(f'<text class="tick" x="{x:.1f}" y="{pad_t - 12}" '
-                     f'text-anchor="middle">{dur(span * frac)}</text>')
+                     f'text-anchor="middle">{axis(span * frac)}</text>')
 
     for i, sample in enumerate(samples):
         y = pad_t + i * (row_h + gap)
@@ -673,11 +711,12 @@ def main():
     h.append("<section class='stats'>")
     for n, k, hint in [
         (dur(span), "Elapsed", "first job start to last job end"),
-        (dur(total_cpu), "CPU time", f"{dur(total_wall)} of job wall time"),
+        (dur(total_cpu), "CPU time", "summed over every job"),
         (f"{parallelism:.1f}&times;" if parallelism else "-", "Parallelism",
-         "jobs running concurrently, on average"),
+         "jobs in flight, on average"),
         (pct(utilisation, 0) if utilisation else "-", "Core use",
-         f"of {cores} cores" if cores else "cores unknown"),
+         f"of {cores} cores over the elapsed time" if cores
+         else "core count unknown"),
         (f"{peak_rss:,.0f} MB" if peak_rss else "-", "Peak RSS",
          "largest single job"),
     ]:
@@ -687,28 +726,37 @@ def main():
 
     # verdict on machine use
     if parallelism and cores:
-        headroom = cores / parallelism if parallelism else None
+        # Two different things, easily conflated. Concurrency counts jobs;
+        # utilisation counts cores. A single wide job can run alone and still
+        # keep the machine busy, so the verdict turns on utilisation and uses
+        # concurrency to explain it.
         h.append("<section class='panel'><h2>Machine use</h2>")
+        h.append(
+            f"<p class='sub'>{dur(total_cpu)} of CPU work finished in "
+            f"{dur(span)}, using <strong>{pct(utilisation, 0)}</strong> of the "
+            f"{cores} cores available. On average "
+            f"<strong>{parallelism:.1f}</strong> job"
+            f"{'s were' if parallelism >= 1.5 else ' was'} running at a time.</p>")
+        wasted = dur(span * cores * (1 - (utilisation or 0) / 100))
         if utilisation is not None and utilisation < 50:
             h.append(
-                f"<p class='sub'>The run averaged <strong>{parallelism:.1f} "
-                f"concurrent jobs</strong> against {cores} available cores, "
-                f"using <strong>{utilisation:.0f}%</strong> of the CPU capacity "
-                f"on offer. Stages request large <code>threads:</code> counts, "
-                f"and a job cannot start until its full thread count is free, "
-                f"so fewer barcodes run at once. Lowering "
-                f"<code>resources.*.cpus</code> in <code>config.yaml</code> "
-                f"trades per-job speed for more concurrent barcodes, which is "
-                f"usually the better trade when barcodes outnumber cores.</p>")
-            if headroom:
-                h.append(f"<p class='note'>Roughly {headroom:.1f}&times; more "
-                         f"jobs could have been in flight at this core count.</p>")
-        else:
+                f"<p class='sub'>That leaves <strong>{wasted}</strong> of core "
+                f"time unused. A job cannot start until its full "
+                f"<code>threads:</code> count is free, so large per-rule thread "
+                f"counts run fewer barcodes at once and idle the remainder. "
+                f"Lowering <code>resources.*.cpus</code> in "
+                f"<code>config.yaml</code> trades per-job speed for concurrent "
+                f"barcodes, which is normally the better trade when barcodes "
+                f"outnumber cores.</p>")
+        elif utilisation is not None and utilisation < 80:
             h.append(
-                f"<p class='sub'>The run averaged <strong>{parallelism:.1f} "
-                f"concurrent jobs</strong> against {cores} cores, using "
-                f"<strong>{pct(utilisation, 0) if utilisation else '-'}</strong> "
-                f"of available CPU. The machine was kept busy.</p>")
+                f"<p class='note'>Reasonable, with <strong>{wasted}</strong> of "
+                f"core time still idle. Most of that is the tail of the run, "
+                f"where too few barcodes remain to fill the machine; lowering "
+                f"<code>resources.*.cpus</code> would recover some of it.</p>")
+        else:
+            h.append("<p class='note'>Little headroom left at this core "
+                     "count — the stages are using what the machine has.</p>")
         h.append("</section>")
 
     # where the time went
@@ -739,7 +787,7 @@ def main():
                 + td(r["wall_max"], dur(r["wall_max"]))
                 + td(r["max_rss_mb"], f"{r['max_rss_mb']:,.0f} MB"
                     if r["max_rss_mb"] else "-")
-                + td(r["sec_per_1k_reads"], fnum(r["sec_per_1k_reads"], 2))
+                + td(r["sec_per_1k_reads"], ffix(r["sec_per_1k_reads"], 2))
                 + "</tr>")
         h.append("</tbody></table></div>"
                  "<p class='note'>CPU time exceeds wall time for stages that use "
@@ -772,35 +820,40 @@ def main():
     h.append("</section>")
 
     # per barcode
+    # Timings first. This is the performance report, and on a narrow window a
+    # wide table scrolls its rightmost columns out of view — which previously
+    # meant the timing columns were the ones you could not see.
     h.append("<section class='panel'><h2>Per barcode</h2>"
-             "<p class='sub'>Reads and quality before and after filtering, with "
-             "time spent. Click any heading to sort.</p>"
+             "<p class='sub'>Time spent, then reads and quality before and "
+             "after filtering. Click any heading to sort.</p>"
              "<div class='scroll'><table class='sortable'><thead><tr>"
-             "<th>Barcode</th><th>Raw reads</th><th>Filtered</th><th>Retained</th>"
+             "<th>Barcode</th><th>Porechop</th><th>Emu</th><th>Total</th>"
+             "<th>CPU</th><th>s / 1k</th><th>Peak RSS</th>"
+             "<th>Raw reads</th><th>Filtered</th><th>Retained</th>"
              "<th>Raw med Q</th><th>Filt med Q</th><th>Raw &gt;Q15</th>"
              "<th>Filt &gt;Q15</th><th>Raw med len</th><th>Filt med len</th>"
-             "<th>Filt N50</th><th>Porechop</th><th>Emu</th><th>Total</th>"
-             "<th>CPU</th><th>s / 1k</th></tr></thead><tbody>")
+             "</tr></thead><tbody>")
     for r in rows:
         cls = " class='flag'" if r["barcode"] in flagged else ""
         h.append(
             f"<tr{cls}>"
             + td(r["barcode"])
-            + td(r["raw_reads"], fnum(r["raw_reads"]))
-            + td(r["filtered_reads"], fnum(r["filtered_reads"]))
-            + td(r["retention_pct"], pct(r["retention_pct"]))
-            + td(r["raw_median_q"], fnum(r["raw_median_q"]))
-            + td(r["filtered_median_q"], fnum(r["filtered_median_q"]))
-            + td(r["raw_pct_Q15"], pct(r["raw_pct_Q15"]))
-            + td(r["filtered_pct_Q15"], pct(r["filtered_pct_Q15"]))
-            + td(r["raw_median_len"], fnum(r["raw_median_len"]))
-            + td(r["filtered_median_len"], fnum(r["filtered_median_len"]))
-            + td(r["filtered_n50"], fnum(r["filtered_n50"]))
             + td(r["porechop_s"], dur(r["porechop_s"]))
             + td(r["emu_s"], dur(r["emu_s"]))
             + td(r["total_s"], dur(r["total_s"]))
             + td(r["total_cpu_s"], dur(r["total_cpu_s"]))
-            + td(r["sec_per_1k_reads"], fnum(r["sec_per_1k_reads"], 2))
+            + td(r["sec_per_1k_reads"], ffix(r["sec_per_1k_reads"], 2))
+            + td(r["max_rss_mb"], f"{r['max_rss_mb']:,.0f} MB"
+                if r["max_rss_mb"] else "-")
+            + td(r["raw_reads"], fint(r["raw_reads"]))
+            + td(r["filtered_reads"], fint(r["filtered_reads"]))
+            + td(r["retention_pct"], pct(r["retention_pct"]))
+            + td(r["raw_median_q"], ffix(r["raw_median_q"]))
+            + td(r["filtered_median_q"], ffix(r["filtered_median_q"]))
+            + td(r["raw_pct_Q15"], pct(r["raw_pct_Q15"]))
+            + td(r["filtered_pct_Q15"], pct(r["filtered_pct_Q15"]))
+            + td(r["raw_median_len"], fint(r["raw_median_len"]))
+            + td(r["filtered_median_len"], fint(r["filtered_median_len"]))
             + "</tr>")
     h.append("</tbody></table></div></section>")
 
