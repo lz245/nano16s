@@ -22,6 +22,9 @@ def all_targets():
     targets = [
         f"{OUTPUT_DIR}/preprocessing_summary.csv",
         f"{OUTPUT_DIR}/nano16s_report.html",
+        f"{OUTPUT_DIR}/performance_report.html",
+        f"{OUTPUT_DIR}/performance_summary.csv",
+        f"{OUTPUT_DIR}/performance.json",
     ]
     for rank in EMU_RANKS:
         targets.append(f"{OUTPUT_DIR}/07_emu_combined/emu-combined-{rank}.tsv")

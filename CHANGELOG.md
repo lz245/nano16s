@@ -11,6 +11,16 @@ report, so a result can always be traced to the database that produced it.
 ## [Unreleased]
 
 ### Added
+- A performance report, written on every run alongside the existing one:
+  `performance_report.html`, `performance_summary.csv` and `performance.json`.
+  It reports where the run spent its time, how much of the machine it used,
+  and which barcodes fall below the QC floors.
+- `benchmark:` records for every per-sample rule, so timings carry CPU time and
+  peak memory rather than wall clock alone. These land in `benchmarks/`.
+- QC checks with absolute floors — retention, read depth, median quality, and
+  whether the filtered median read length falls inside the configured length
+  window. A purely relative check cannot fire when a whole run is uniformly
+  bad, which is the case most worth catching.
 - `CONTRIBUTING.md`, this changelog, `ruff.toml` and pre-commit hooks.
 - Issue templates that ask for the version and environment details needed to
   reproduce a problem.

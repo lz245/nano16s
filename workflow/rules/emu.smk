@@ -14,6 +14,8 @@ rule emu:
     params:
         db     = config["emu_db"],
         outdir = f"{OUTPUT_DIR}/06_emu_output/{{sample}}",
+    benchmark:
+        f"{OUTPUT_DIR}/benchmarks/emu/{{sample}}.tsv"
     threads:
         config["resources"]["emu"]["cpus"]
     resources:

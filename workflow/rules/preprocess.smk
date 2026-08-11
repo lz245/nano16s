@@ -19,6 +19,8 @@ rule merge:
         barcode_dir = os.path.join(INPUT_DIR, "{sample}")
     output:
         f"{OUTPUT_DIR}/01_merged/{{sample}}.fastq.gz"
+    benchmark:
+        f"{OUTPUT_DIR}/benchmarks/merge/{{sample}}.tsv"
     resources:
         cpus_per_task = config["resources"]["merge"]["cpus"],
         mem_mb        = config["resources"]["merge"]["mem_mb"],
@@ -58,6 +60,8 @@ rule nanostat_raw:
         f"{OUTPUT_DIR}/02_nanostat_raw/{{sample}}/{{sample}}_quality_summary.txt"
     params:
         outdir = f"{OUTPUT_DIR}/02_nanostat_raw/{{sample}}"
+    benchmark:
+        f"{OUTPUT_DIR}/benchmarks/nanostat_raw/{{sample}}.tsv"
     resources:
         cpus_per_task = config["resources"]["nanostat"]["cpus"],
         mem_mb        = config["resources"]["nanostat"]["mem_mb"],
@@ -99,6 +103,8 @@ rule porechop:
         f"{OUTPUT_DIR}/01_merged/{{sample}}.fastq.gz"
     output:
         f"{OUTPUT_DIR}/03_trimmed/{{sample}}_trimmed.fastq.gz"
+    benchmark:
+        f"{OUTPUT_DIR}/benchmarks/porechop/{{sample}}.tsv"
     threads:
         config["resources"]["porechop"]["cpus"]
     resources:
@@ -130,6 +136,8 @@ rule chopper:
         min_len = config["min_length"],
         max_len = config["max_length"],
         min_q   = config["min_quality"],
+    benchmark:
+        f"{OUTPUT_DIR}/benchmarks/chopper/{{sample}}.tsv"
     threads:
         config["resources"]["chopper"]["cpus"]
     resources:
@@ -158,6 +166,8 @@ rule nanostat_filtered:
         f"{OUTPUT_DIR}/05_nanostat_filtered/{{sample}}/{{sample}}_filtered_quality_summary.txt"
     params:
         outdir = f"{OUTPUT_DIR}/05_nanostat_filtered/{{sample}}"
+    benchmark:
+        f"{OUTPUT_DIR}/benchmarks/nanostat_filtered/{{sample}}.tsv"
     resources:
         cpus_per_task = config["resources"]["nanostat"]["cpus"],
         mem_mb        = config["resources"]["nanostat"]["mem_mb"],
