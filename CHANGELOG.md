@@ -10,6 +10,8 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-08-11
+
 ### Added
 - A performance report, written on every run alongside the existing one:
   `performance_report.html`, `performance_summary.csv` and `performance.json`.
