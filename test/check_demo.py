@@ -15,11 +15,19 @@ Exits 0 if everything looks right, 1 otherwise.
 from __future__ import annotations
 
 import csv
+import json
 import sys
 from pathlib import Path
 
 EXPECTED_BARCODES = 6
 RANKS = ("species", "genus", "phylum")
+
+# Every rule that runs once per barcode and records a benchmark. If a stage
+# stops being benchmarked its row simply vanishes from the report, which is
+# not visible in the report itself — hence checking the files directly.
+BENCHMARKED_STAGES = (
+    "merge", "nanostat_raw", "porechop", "chopper", "emu", "nanostat_filtered",
+)
 
 GREEN, RED, YELLOW, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
 if not sys.stdout.isatty():
@@ -44,7 +52,13 @@ def warn(msg: str) -> None:
 
 
 def check_files(root: Path) -> None:
-    expected = [root / "preprocessing_summary.csv", root / "nano16s_report.html"]
+    expected = [
+        root / "preprocessing_summary.csv",
+        root / "nano16s_report.html",
+        root / "performance_report.html",
+        root / "performance_summary.csv",
+        root / "performance.json",
+    ]
     for rank in RANKS:
         expected.append(root / "07_emu_combined" / f"emu-combined-{rank}.tsv")
         expected.append(root / "07_emu_combined" / f"emu-combined-{rank}-counts.tsv")
@@ -156,6 +170,79 @@ def check_abundance(root: Path) -> None:
         ok("relative abundances sum to 1.0 in every barcode")
 
 
+def check_benchmarks(root: Path) -> None:
+    """Every per-barcode stage should have left one benchmark file per barcode.
+
+    These are what the performance report is built from. A stage that stops
+    recording them does not produce an error: its row disappears from the
+    report, and the report still renders and still looks complete.
+    """
+    bench = root / "benchmarks"
+    if not bench.is_dir():
+        fail("missing benchmarks/ — no stage recorded timings")
+        return
+
+    missing = []
+    for stage in BENCHMARKED_STAGES:
+        n = len(list((bench / stage).glob("*.tsv"))) if (bench / stage).is_dir() else 0
+        if n != EXPECTED_BARCODES:
+            missing.append(f"{stage} ({n}/{EXPECTED_BARCODES})")
+    if missing:
+        fail("benchmark files missing for: " + ", ".join(missing))
+    else:
+        ok(f"all {len(BENCHMARKED_STAGES)} stages benchmarked "
+           f"across {EXPECTED_BARCODES} barcodes")
+
+
+def check_performance(root: Path) -> None:
+    """The performance report's own numbers, read from its JSON companion.
+
+    Checked through performance.json rather than by scraping the HTML: it
+    holds the same values, and asserting on the data rather than the markup
+    means a layout change does not fail the install check.
+    """
+    path = root / "performance.json"
+    if not path.exists() or path.stat().st_size == 0:
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        fail(f"performance.json is not valid JSON: {exc}")
+        return
+
+    for key in ("run", "system", "stages", "barcodes"):
+        if key not in data:
+            fail(f"performance.json has no '{key}' section")
+            return
+
+    run = data["run"]
+    if run.get("barcodes") != EXPECTED_BARCODES:
+        fail(f"performance report counted {run.get('barcodes')} barcodes, "
+             f"expected {EXPECTED_BARCODES}")
+    elif not run.get("cpu_seconds"):
+        fail("performance report recorded no CPU time")
+    else:
+        ok(f"performance report: {EXPECTED_BARCODES} barcodes, "
+           f"{run['cpu_seconds']:,.0f}s CPU across "
+           f"{len(data['stages'])} stages")
+
+    # The machine section is what makes one run's timings comparable to
+    # another's, so an empty one is worth failing over rather than noting.
+    system = data["system"]
+    blank = [k for k in ("cpu_model", "cpu_threads_logical", "ram_mb", "os")
+             if not system.get(k)]
+    if blank:
+        fail("performance report did not detect: " + ", ".join(blank))
+    else:
+        ok(f"system recorded: {system['cpu_threads_logical']} threads, "
+           f"{system['ram_mb'] / 1024:.1f} GB, {system['os']}")
+
+    # Peak memory comes from the same records as the timings; zero here means
+    # the benchmarks were parsed but held nothing.
+    if not run.get("peak_rss_mb"):
+        warn("no peak memory recorded — benchmarks may be empty")
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
@@ -171,6 +258,9 @@ def main() -> int:
     check_preprocessing(root)
     print()
     check_abundance(root)
+    print()
+    check_benchmarks(root)
+    check_performance(root)
     print()
 
     if problems:
