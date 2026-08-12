@@ -16,24 +16,28 @@ a placeholder — substitute your own run directory wherever you see
 ## Contents
 
 1. [What nano16s does](#1-what-nano16s-does)
-2. [Before you start](#2-before-you-start)
-3. [Install](#3-install)
-4. [Build the reference database](#4-build-the-reference-database)
-5. [Verify the install](#5-verify-the-install)
-6. [Prepare your data](#6-prepare-your-data)
-7. [Choose settings for your amplicon](#7-choose-settings-for-your-amplicon)
-8. [Plan the run](#8-plan-the-run-time-disk-memory)
-9. [Run it](#9-run-it)
-10. [What you get](#10-what-you-get)
-11. [Read the results report](#11-read-the-results-report)
-12. [Read the performance report](#12-read-the-performance-report)
-13. [Quality control: what gets flagged](#13-quality-control-what-gets-flagged)
-14. [Use the tables downstream](#14-use-the-tables-downstream)
-15. [Interpreting 16S results](#15-interpreting-16s-results)
-16. [Re-running and changing settings](#16-re-running-and-changing-settings)
-17. [Processing several runs](#17-processing-several-runs)
-18. [Troubleshooting](#18-troubleshooting)
-19. [Reference](#19-reference)
+2. [What you need](#2-what-you-need)
+3. [Set up your computer](#3-set-up-your-computer)
+4. [Install nano16s](#4-install-nano16s)
+5. [Build the reference database](#5-build-the-reference-database)
+6. [Verify the install](#6-verify-the-install)
+7. [Prepare your data](#7-prepare-your-data)
+8. [Choose settings for your amplicon](#8-choose-settings-for-your-amplicon)
+9. [Plan the run](#9-plan-the-run-time-disk-memory)
+10. [Run it](#10-run-it)
+11. [What you get](#11-what-you-get)
+12. [Read the results report](#12-read-the-results-report)
+13. [Read the performance report](#13-read-the-performance-report)
+14. [Quality control: what gets flagged](#14-quality-control-what-gets-flagged)
+15. [Use the tables downstream](#15-use-the-tables-downstream)
+16. [Interpreting 16S results](#16-interpreting-16s-results)
+17. [Re-running and changing settings](#17-re-running-and-changing-settings)
+18. [Processing several runs](#18-processing-several-runs)
+19. [Troubleshooting](#19-troubleshooting)
+20. [Reference](#20-reference)
+
+**Never used a terminal before?** Start at section 3 and follow it in order.
+It assumes nothing is installed.
 
 ---
 
@@ -80,38 +84,202 @@ after the barcode directory it came from — `barcode01`, `barcode02`, and so on
 
 Barcode numbers are *not* sample numbers. If you loaded samples on barcodes 5,
 6, 9 and 20, your results have columns `barcode05`, `barcode06`, `barcode09`
-and `barcode20` — not 1 through 4. Section 6 covers keeping track of which is
+and `barcode20` — not 1 through 4. Section 7 covers keeping track of which is
 which.
 
 ---
 
-## 2. Before you start
+## 2. What you need
 
-**Operating system.** macOS (Intel or Apple Silicon), or Linux. Windows works
-through WSL2 — see the WSL notes in section 18, which are worth reading before
-your first long run.
+Section 3 installs the software. This section is what you need to have or
+know before that is worth doing.
 
-**Software.** [Miniforge](https://github.com/conda-forge/miniforge#install), or
-any conda distribution. Nothing else; the installer brings in every
-bioinformatics tool.
+### A computer
 
-**Hardware.** 8 GB RAM is the practical floor; 16 GB or more is comfortable.
-More CPU cores make runs faster almost linearly, up to a point (section 12).
+| | |
+|---|---|
+| **Operating system** | Windows 10/11, macOS (Intel or Apple Silicon), or Linux |
+| **RAM** | 8 GB minimum, 16 GB or more comfortable |
+| **CPU** | any; more cores means proportionally faster runs |
+| **Disk** | about 3x your data, plus ~1 GB software and ~150 MB database |
+| **Internet** | needed for setup and once to build the database; runs are offline |
 
-**Disk.** Budget about **3× your input size**, plus ~1 GB for the software and
-~150 MB for the reference database. The intermediates in `01_merged/` and
-`03_trimmed/` are the bulk of it and can be deleted once a run finishes.
+On Windows everything runs inside WSL2, which is a real Linux environment
+provided by Windows. Section 3 sets it up; you do not need to install Linux
+separately or dual-boot.
 
-**Internet.** Needed once, to build the reference database. Runs themselves are
-entirely offline.
+### Your sequencing data
 
-**Your data.** An Oxford Nanopore run of full-length 16S amplicons, basecalled
-and demultiplexed, with one directory per barcode. This is what MinKNOW and
-Dorado produce by default.
+An Oxford Nanopore run of full-length 16S amplicons, **basecalled and
+demultiplexed**, with one directory per barcode. This is what MinKNOW and
+Dorado produce by default — the `fastq_pass` folder.
+
+If your reads are in one undivided folder, the run was not demultiplexed, and
+that has to happen first. nano16s does not do it.
+
+You do not need your data to start: sections 3 to 6 install and verify
+everything against bundled demo data.
+
+### Time
+
+| | |
+|---|---|
+| Setting up the computer (section 3) | 15-40 minutes, once |
+| Installing nano16s (section 4) | 5-15 minutes, once |
+| Building the database (section 5) | ~10 minutes, once |
+| Verifying it works (section 6) | ~5 minutes |
+| A real run | minutes to hours, depending on data size (section 9) |
+
+### What you do not need
+
+No prior bioinformatics experience, no programming, no cluster account, no
+Docker, and no administrator rights beyond the initial WSL2 or Miniforge
+install. Every tool the pipeline uses is installed for you in section 4.
 
 ---
 
-## 3. Install
+## 3. Set up your computer
+
+Skip to section 4 if you already have conda working in a terminal.
+
+Everything here happens **once per machine**. Follow the part for your
+operating system, then the Miniforge step, which is the same for everyone.
+
+### A word on the terminal
+
+The rest of this guide is typed commands. A terminal is a window where you
+type a line and press Enter, and the computer replies with text. Commands are
+shown in boxes like this:
+
+```bash
+echo hello
+```
+
+Type or paste the contents, press Enter, and read what comes back. Nothing
+here will damage your machine.
+
+---
+
+### Windows
+
+Windows runs nano16s through **WSL2** — Windows Subsystem for Linux — which
+gives you a genuine Ubuntu system inside Windows. You do not lose Windows, and
+your files stay accessible from both sides.
+
+**1. Open PowerShell as Administrator.** Press Start, type `PowerShell`,
+right-click *Windows PowerShell*, choose *Run as administrator*.
+
+**2. Install WSL2 with Ubuntu:**
+
+```powershell
+wsl --install
+```
+
+**3. Restart your computer** when it asks.
+
+**4. Finish setting up Ubuntu.** After restarting, an Ubuntu window opens and
+asks for a username and password. These are for Linux and are separate from
+your Windows login. The password will not appear as you type it — that is
+normal.
+
+If no Ubuntu window opens, press Start and run *Ubuntu*.
+
+**5. From here on, use the Ubuntu terminal, not PowerShell.** Every command in
+the rest of this guide is typed there. Open it any time from the Start menu.
+
+> **Where to keep your data.** Work inside the Linux home directory — the
+> place the Ubuntu terminal starts in. You can reach Windows drives under
+> `/mnt/c/`, but reading data across that boundary is several times slower, and
+> it is a common reason for a run taking far longer than it should. Copy your
+> sequencing data into the Linux side first.
+
+WSL has two failure modes worth knowing about before a long run — a clock that
+drifts from Windows and stops a run near the end, and Windows line endings
+breaking scripts. Both are in section 19 with their fixes.
+
+Continue at *Install Miniforge* below.
+
+---
+
+### macOS
+
+**1. Open the Terminal.** Press Cmd-Space, type `Terminal`, press Enter.
+
+**2. Install Apple's command line tools:**
+
+```bash
+xcode-select --install
+```
+
+A dialog appears; accept it. If it says the tools are already installed, that
+is fine — carry on.
+
+Continue at *Install Miniforge* below.
+
+---
+
+### Linux
+
+Open a terminal and make sure `curl` and `git` are present:
+
+```bash
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y curl git
+
+# Fedora / RHEL
+sudo dnf install -y curl git
+```
+
+Continue below.
+
+---
+
+### Install Miniforge (all platforms)
+
+Miniforge provides `conda`, which installs and isolates the bioinformatics
+tools the pipeline needs. Without it nothing else in this guide will work.
+
+**1. Download and run the installer:**
+
+```bash
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
+
+Press Enter to page through the licence, type `yes` to accept, press Enter to
+accept the default location, and answer `yes` when it offers to initialise
+conda in your shell.
+
+**2. Close the terminal and open a new one.** The change only applies to
+terminals started afterwards.
+
+**3. Check it worked:**
+
+```bash
+conda --version
+```
+
+You should see something like `conda 24.x.x`.
+
+> **`conda: command not found`**
+> The shell has not picked up the install. Close the terminal and open a new
+> one. If it still fails, run `source ~/.bashrc` (or `source ~/.zshrc` on
+> macOS) and try again.
+
+### Check you are ready
+
+```bash
+conda --version     # a version number
+git --version       # a version number
+echo $HOME          # your home directory
+```
+
+Three version numbers and a path means the machine is ready. Continue to
+section 4.
+
+---
+
+## 4. Install nano16s
 
 ```bash
 git clone https://github.com/lz245/nano16s-local.git
@@ -139,7 +307,7 @@ echo 'conda activate nano16s' >> ~/.bashrc      # or ~/.zshrc
 
 ---
 
-## 4. Build the reference database
+## 5. Build the reference database
 
 Organisms can only be identified against a reference. Build one now — it takes
 about ten minutes and downloads roughly 100 MB from NCBI. **You do this once**,
@@ -180,7 +348,7 @@ shared drive.
 
 ---
 
-## 5. Verify the install
+## 6. Verify the install
 
 Before touching your own data, run the bundled six-barcode demo. It takes about
 five minutes.
@@ -198,7 +366,7 @@ real run.
 
 ---
 
-## 6. Prepare your data
+## 7. Prepare your data
 
 This is where most first runs go wrong, and it is worth five minutes of
 checking.
@@ -289,13 +457,13 @@ barcode05,Control_soil
 CSV
 ```
 
-Section 14 shows how to apply it when loading the tables. Doing this at the
+Section 15 shows how to apply it when loading the tables. Doing this at the
 start rather than at analysis time saves real confusion — barcode numbering and
 sample numbering rarely line up.
 
 ---
 
-## 7. Choose settings for your amplicon
+## 8. Choose settings for your amplicon
 
 ### Length window — the setting that matters most
 
@@ -350,7 +518,7 @@ nano16s -d /path/to/your_run/fastq_pass -c 4
 
 ---
 
-## 8. Plan the run (time, disk, memory)
+## 9. Plan the run (time, disk, memory)
 
 ### How long
 
@@ -399,7 +567,7 @@ report records the actual peak for every run.
 
 ---
 
-## 9. Run it
+## 10. Run it
 
 Preview first. This lists the steps without executing them, and catches a bad
 path or a missing database in seconds rather than minutes:
@@ -436,7 +604,7 @@ picks up where it stopped.
 
 ---
 
-## 10. What you get
+## 11. What you get
 
 ```
 my_results/
@@ -472,7 +640,7 @@ safe to email or attach to a manuscript.
 
 ---
 
-## 11. Read the results report
+## 12. Read the results report
 
 Open `nano16s_report.html`.
 
@@ -494,7 +662,7 @@ is recorded here.
 
 ---
 
-## 12. Read the performance report
+## 13. Read the performance report
 
 Open `performance_report.html`. This one is about the run rather than the
 biology — reach for it when something took longer than expected, or a barcode
@@ -529,7 +697,7 @@ heading to sort.
 
 ---
 
-## 13. Quality control: what gets flagged
+## 14. Quality control: what gets flagged
 
 The performance report checks every barcode against fixed thresholds and
 explains anything that fails. These are absolute, not relative to the rest of
@@ -549,7 +717,7 @@ the reads look the way full-length 16S data should.
 
 ---
 
-## 14. Use the tables downstream
+## 15. Use the tables downstream
 
 The combined tables are plain tab-separated text. Rows are taxa, columns are
 barcodes.
@@ -590,7 +758,7 @@ converting taxon names that look like dates.
 
 ---
 
-## 15. Interpreting 16S results
+## 16. Interpreting 16S results
 
 **Genus is the defensible resolution.** Species-level assignment from 16S is
 genuinely hard — many genera contain species whose 16S genes are near-identical,
@@ -614,7 +782,7 @@ report. Cite it alongside the tool versions.
 
 ---
 
-## 16. Re-running and changing settings
+## 17. Re-running and changing settings
 
 nano16s tracks what has been done. Re-running the same command finishes in
 seconds; changing a setting re-runs only what that setting affects.
@@ -647,7 +815,7 @@ discard existing work by design, which is what makes resuming possible.
 
 ---
 
-## 17. Processing several runs
+## 18. Processing several runs
 
 Give each run its own output directory and loop:
 
@@ -673,7 +841,7 @@ Points worth noting:
 
 ---
 
-## 18. Troubleshooting
+## 19. Troubleshooting
 
 **`nano16s: command not found`**
 Run `conda activate nano16s`. Needed in every new terminal.
@@ -704,7 +872,7 @@ sequences from your data instead of assuming them. Budget a few minutes per
 barcode.
 
 **The run is using less of my CPU than expected**
-See the Machine use section of the performance report, and section 12.
+See the Machine use section of the performance report, and section 13.
 
 ### On WSL2
 
@@ -744,7 +912,7 @@ settings, which usually answers the first three questions at once.
 
 ---
 
-## 19. Reference
+## 20. Reference
 
 ### Command line
 
