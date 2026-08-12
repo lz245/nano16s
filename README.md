@@ -11,6 +11,10 @@ bioinformatics setup beyond one install command.
 nano16s -d /path/to/fastq_pass -o my_results
 ```
 
+**New here?** The [user guide](docs/USER_GUIDE.md) walks through the whole
+thing on your own data — installing, laying out your run, picking a length
+window that matches your amplicon, and reading the results.
+
 ---
 
 ## What it does
