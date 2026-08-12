@@ -1,0 +1,808 @@
+# nano16s user guide
+
+A start-to-finish walkthrough: installing the software, preparing your own
+sequencing run, choosing settings that match your amplicon, running the
+pipeline, and reading what comes out.
+
+The [README](../README.md) is the quick reference. This guide is the longer
+version, written for someone doing this for the first time on their own data.
+
+**Nothing here is specific to a particular dataset.** Every path is written as
+a placeholder — substitute your own run directory wherever you see
+`/path/to/your_run`.
+
+---
+
+## Contents
+
+1. [What nano16s does](#1-what-nano16s-does)
+2. [Before you start](#2-before-you-start)
+3. [Install](#3-install)
+4. [Build the reference database](#4-build-the-reference-database)
+5. [Verify the install](#5-verify-the-install)
+6. [Prepare your data](#6-prepare-your-data)
+7. [Choose settings for your amplicon](#7-choose-settings-for-your-amplicon)
+8. [Plan the run](#8-plan-the-run-time-disk-memory)
+9. [Run it](#9-run-it)
+10. [What you get](#10-what-you-get)
+11. [Read the results report](#11-read-the-results-report)
+12. [Read the performance report](#12-read-the-performance-report)
+13. [Quality control: what gets flagged](#13-quality-control-what-gets-flagged)
+14. [Use the tables downstream](#14-use-the-tables-downstream)
+15. [Interpreting 16S results](#15-interpreting-16s-results)
+16. [Re-running and changing settings](#16-re-running-and-changing-settings)
+17. [Processing several runs](#17-processing-several-runs)
+18. [Troubleshooting](#18-troubleshooting)
+19. [Reference](#19-reference)
+
+---
+
+## 1. What nano16s does
+
+You give it the `fastq_pass` folder from an Oxford Nanopore run of full-length
+16S rRNA amplicons. It gives you back tables of which organisms are present in
+each sample and in what proportion, plus two HTML reports.
+
+```
+your fastq_pass/
+  barcode01/  ─┐
+  barcode02/   │  one directory per sample
+  ...          │
+               ▼
+        merge the FASTQ files in each barcode directory
+               ▼
+        measure read quality                    (NanoStat)
+               ▼
+        trim sequencing adapters                (Porechop_ABI)
+               ▼
+        filter by length and quality            (Chopper)
+               ▼
+        measure quality again                   (NanoStat)
+               ▼
+        identify organisms                      (Emu, vs NCBI 16S RefSeq)
+               ▼
+        abundance tables + reports
+```
+
+Each stage runs on every barcode independently, so the work parallelises
+across your samples.
+
+**Why Emu.** It estimates abundances with an expectation–maximisation
+algorithm rather than assigning each read to its single best database hit. On
+error-prone long reads, best-hit assignment loses low-abundance organisms;
+Emu recovers them.
+
+### The one thing to understand up front
+
+**One `barcode*` directory is one physical sample.** The pipeline treats each
+as a separate sample from beginning to end, and every output column is named
+after the barcode directory it came from — `barcode01`, `barcode02`, and so on.
+
+Barcode numbers are *not* sample numbers. If you loaded samples on barcodes 5,
+6, 9 and 20, your results have columns `barcode05`, `barcode06`, `barcode09`
+and `barcode20` — not 1 through 4. Section 6 covers keeping track of which is
+which.
+
+---
+
+## 2. Before you start
+
+**Operating system.** macOS (Intel or Apple Silicon), or Linux. Windows works
+through WSL2 — see the WSL notes in section 18, which are worth reading before
+your first long run.
+
+**Software.** [Miniforge](https://github.com/conda-forge/miniforge#install), or
+any conda distribution. Nothing else; the installer brings in every
+bioinformatics tool.
+
+**Hardware.** 8 GB RAM is the practical floor; 16 GB or more is comfortable.
+More CPU cores make runs faster almost linearly, up to a point (section 12).
+
+**Disk.** Budget about **3× your input size**, plus ~1 GB for the software and
+~150 MB for the reference database. The intermediates in `01_merged/` and
+`03_trimmed/` are the bulk of it and can be deleted once a run finishes.
+
+**Internet.** Needed once, to build the reference database. Runs themselves are
+entirely offline.
+
+**Your data.** An Oxford Nanopore run of full-length 16S amplicons, basecalled
+and demultiplexed, with one directory per barcode. This is what MinKNOW and
+Dorado produce by default.
+
+---
+
+## 3. Install
+
+```bash
+git clone https://github.com/lz245/nano16s-local.git
+cd nano16s-local
+bash install.sh
+conda activate nano16s
+```
+
+Check it worked:
+
+```bash
+nano16s --version
+```
+
+> **`nano16s: command not found`**
+> You need `conda activate nano16s` in **every new terminal**. This is the
+> single most common problem people hit. If a command that worked yesterday
+> fails today, this is almost always why.
+
+Consider adding it to your shell profile so it happens automatically:
+
+```bash
+echo 'conda activate nano16s' >> ~/.bashrc      # or ~/.zshrc
+```
+
+---
+
+## 4. Build the reference database
+
+Organisms can only be identified against a reference. Build one now — it takes
+about ten minutes and downloads roughly 100 MB from NCBI. **You do this once**,
+not per run.
+
+```bash
+nano16s db build
+```
+
+This builds from the current NCBI 16S RefSeq Targeted Loci collection — about
+28,000 curated sequences across 21,000 taxa.
+
+**Why not use Emu's own database?** Emu ships one built from NCBI in September
+2020 and never refreshed. Species described since then are simply absent from
+it, and a read from an absent species gets assigned to whatever relative *is*
+present. Building your own avoids that.
+
+### Managing databases
+
+```bash
+nano16s db list                     # what you have
+nano16s db build --version 2026.07  # name a build explicitly
+```
+
+Databases install to `~/.nano16s/db/<version>/` and never overwrite each other.
+That matters for reproducibility: a result from six months ago can still be
+re-run against the database that produced it. The database version is recorded
+in every report.
+
+Runs use the newest installed database unless you say otherwise:
+
+```bash
+nano16s -d /path/to/your_run/fastq_pass --db ~/.nano16s/db/2026.07/ncbi_16s
+```
+
+Set `NANO16S_DB` to move the whole database root somewhere else, such as a
+shared drive.
+
+---
+
+## 5. Verify the install
+
+Before touching your own data, run the bundled six-barcode demo. It takes about
+five minutes.
+
+```bash
+nano16s test
+```
+
+If it prints **Install verified**, everything works: the environment, every
+tool, the database, and the reports.
+
+Do this after installing, and again after any change to your conda environment.
+It is much easier to debug a broken install on demo data than three hours into a
+real run.
+
+---
+
+## 6. Prepare your data
+
+This is where most first runs go wrong, and it is worth five minutes of
+checking.
+
+### The layout nano16s expects
+
+```
+/path/to/your_run/
+└── fastq_pass/              ← point -d at THIS directory
+    ├── barcode01/
+    │   ├── something.fastq.gz
+    │   └── another.fastq.gz     (several files per barcode is normal)
+    ├── barcode02/
+    │   └── ...
+    └── barcode20/
+```
+
+Rules:
+
+- `-d` points at the directory **containing** the `barcode*` directories, not
+  at a barcode directory and not at the run directory above it.
+- Barcode directories must be named `barcode` followed by digits. This is what
+  MinKNOW and Dorado produce.
+- Barcode numbers need not be contiguous. `barcode05`, `barcode06`, `barcode20`
+  is perfectly fine.
+- Each barcode directory needs at least one `.fastq.gz` file. Multiple files
+  are merged automatically.
+
+### Check before you run
+
+```bash
+# 1. How many barcodes will be processed?
+ls -d /path/to/your_run/fastq_pass/barcode* | wc -l
+
+# 2. Which ones? (confirms numbering matches what you loaded)
+ls -d /path/to/your_run/fastq_pass/barcode* | xargs -n1 basename
+
+# 3. Does every barcode actually contain data?
+for d in /path/to/your_run/fastq_pass/barcode*/; do
+    n=$(ls "$d"*.fastq.gz 2>/dev/null | wc -l)
+    echo "$(basename "$d"): $n files"
+done
+```
+
+A barcode showing `0 files` will stop the run. Either the copy was incomplete,
+or that barcode genuinely produced nothing — in which case remove the empty
+directory and continue.
+
+### Situations you may need to handle
+
+**Your files are `.fastq`, not `.fastq.gz`.** Compress them:
+
+```bash
+gzip /path/to/your_run/fastq_pass/barcode*/*.fastq
+```
+
+**Everything is in one folder with no barcode directories.** The run was not
+demultiplexed. Demultiplex it first (with Dorado or the MinKNOW re-basecalling
+options); nano16s does not do this step.
+
+**`fastq_pass` is nested deeper**, for instance inside a date-and-flowcell
+folder. That is fine — give the full path. Find it with:
+
+```bash
+find /path/to/your_run -type d -name fastq_pass
+```
+
+**You also have a `fastq_fail` folder.** Ignore it. Those reads failed the
+basecaller's quality filter.
+
+**Your data is on a network drive or an external disk.** Copy it to a local
+disk first. The pipeline reads every file several times and network latency
+dominates the runtime. On WSL2 specifically, keep data under the Linux home
+directory and *not* under `/mnt/c/` — crossing the Windows filesystem boundary
+is several times slower.
+
+### Record which barcode is which sample
+
+The pipeline cannot know your sample names, so every output column is a barcode
+identifier. Before you forget, write the mapping down next to your results:
+
+```bash
+cat > /path/to/your_run/barcode_map.csv <<'CSV'
+barcode,sample
+barcode01,Field_plot_A_rep1
+barcode02,Field_plot_A_rep2
+barcode05,Control_soil
+CSV
+```
+
+Section 14 shows how to apply it when loading the tables. Doing this at the
+start rather than at analysis time saves real confusion — barcode numbering and
+sample numbering rarely line up.
+
+---
+
+## 7. Choose settings for your amplicon
+
+### Length window — the setting that matters most
+
+Reads shorter than `--min-length` or longer than `--max-length` are discarded.
+The defaults suit the full-length 16S gene:
+
+| | Default |
+|---|---|
+| `--min-length` | 1000 |
+| `--max-length` | 2000 |
+
+Full-length 16S is about 1,500 bp, so this keeps near-full-length reads and
+drops fragments and concatemers.
+
+**If you amplified something else, change this.** A different region left at
+the default window silently discards most of your data, and the run will look
+like it worked.
+
+| What you amplified | Approximate product | Suggested window |
+|---|---|---|
+| Full-length 16S (27F–1492R) | ~1,500 bp | 1000–2000 (default) |
+| 16S + 23S rRNA operon | ~4,500 bp | 3500–5500 |
+| V3–V4 | ~460 bp | 300–700 |
+| V1–V9 with long primers | ~1,600 bp | 1200–2000 |
+
+Not sure what you have? Run the pipeline on a couple of barcodes with a wide
+window, then look at the median read length in the report and narrow it:
+
+```bash
+nano16s -d /path/to/your_run/fastq_pass -o /tmp/length_check \
+        --min-length 200 --max-length 10000
+```
+
+### Quality
+
+`--min-quality` (default `10`) drops reads whose mean Phred quality is below
+the threshold. Q10 means roughly 90% base accuracy — a reasonable floor for
+modern nanopore chemistry.
+
+Raise it to 12 or 15 if you have reads to spare and want cleaner
+classification. Watch the retention figures in the report: if you are throwing
+away more than about 20% of reads, you are being too strict for your data.
+
+### Cores
+
+`-c` defaults to every core but one. Lower it if you need the machine for
+something else:
+
+```bash
+nano16s -d /path/to/your_run/fastq_pass -c 4
+```
+
+---
+
+## 8. Plan the run (time, disk, memory)
+
+### How long
+
+Runtime scales with the number of reads, not the number of barcodes. As
+measured on a 20-core workstation:
+
+| Reads in the run | Barcodes | Elapsed |
+|---|---|---|
+| ~200,000 | 24 | ~45 min |
+| ~340,000 | 24 | ~75 min |
+| ~510,000 | 16 | ~85 min |
+| ~2,300,000 | 24 | ~4h 20m |
+| ~3,200,000 | 24 | ~8h 25m |
+
+Treat these as a rough guide — a machine with a quarter of the cores takes
+substantially longer. Two stages dominate: **Porechop**, which infers adapter
+sequences from your data rather than assuming them, and **Emu**, which does the
+classification.
+
+For a long run, start it in a way that survives losing your terminal:
+
+```bash
+nohup nano16s -d /path/to/your_run/fastq_pass -o my_results -y \
+    > my_run.log 2>&1 &
+
+tail -f my_run.log        # watch progress; Ctrl-C stops watching, not the run
+```
+
+### How much disk
+
+About 3× your input. nano16s checks free space before starting and warns you if
+it looks tight. Afterwards you can reclaim most of it:
+
+```bash
+rm -rf my_results/01_merged my_results/03_trimmed
+```
+
+Keep `04_filtered/` if you might re-run the classification step against a newer
+database; it is the input to Emu.
+
+### How much memory
+
+Peak memory is dominated by Emu and scales with database size, not with your
+number of reads — roughly 500 MB to 2.5 GB per concurrent job. The performance
+report records the actual peak for every run.
+
+---
+
+## 9. Run it
+
+Preview first. This lists the steps without executing them, and catches a bad
+path or a missing database in seconds rather than minutes:
+
+```bash
+nano16s -d /path/to/your_run/fastq_pass -o my_results -n
+```
+
+Then run it:
+
+```bash
+nano16s -d /path/to/your_run/fastq_pass -o my_results
+```
+
+Before starting, nano16s prints a summary — input, barcode count, database,
+filter settings, cores — and warns if free disk looks insufficient. Add `-y` to
+skip the confirmation when running unattended.
+
+A full example with non-default settings:
+
+```bash
+nano16s \
+    -d /path/to/your_run/fastq_pass \
+    -o /path/to/results/my_experiment \
+    --min-length 1300 \
+    --max-length 1800 \
+    --min-quality 12 \
+    -c 8
+```
+
+**If it stops partway** — a crash, a power cut, a closed laptop — run exactly
+the same command again. Completed work is detected and skipped, and the run
+picks up where it stopped.
+
+---
+
+## 10. What you get
+
+```
+my_results/
+├── nano16s_report.html          ← open this first
+├── performance_report.html      the run itself: timings, machine, QC flags
+├── performance_summary.csv      per-barcode numbers behind that report
+├── performance.json             machine-readable, for comparing runs
+├── preprocessing_summary.csv    reads surviving each stage, per barcode
+├── benchmarks/                  per-job wall time, CPU time, peak memory
+├── 01_merged/                   intermediates — safe to delete when done
+├── 02_nanostat_raw/
+├── 03_trimmed/
+├── 04_filtered/
+├── 05_nanostat_filtered/
+├── 06_emu_output/               per-barcode classification
+└── 07_emu_combined/             ← the results you will analyse
+    ├── emu-combined-species.tsv         relative abundance
+    ├── emu-combined-species-counts.tsv  estimated read counts
+    ├── emu-combined-genus.tsv
+    ├── emu-combined-genus-counts.tsv
+    ├── emu-combined-phylum.tsv
+    └── emu-combined-phylum-counts.tsv
+```
+
+**Relative abundance vs counts.** Abundance tables give each taxon's proportion
+of the sample, summing to 1 per column. Counts tables give Emu's estimated
+number of reads. Use abundances to compare composition between samples; use
+counts for methods that expect count data, such as differential-abundance
+testing.
+
+Both reports are self-contained single files — no internet needed to view them,
+safe to email or attach to a manuscript.
+
+---
+
+## 11. Read the results report
+
+Open `nano16s_report.html`.
+
+**Read funnel.** Reads per barcode before and after filtering. What you want is
+consistency: barcodes retaining broadly similar proportions. One barcode
+retaining far less than the rest points at a problem with that sample or that
+library.
+
+**Composition charts.** Relative abundance per barcode at species and genus
+level. The top taxa get consistent colours across all barcodes, so a colour
+means the same organism in every row.
+
+**Per-barcode table.** Read counts, median length, and median quality before and
+after filtering.
+
+**Methods paragraph.** Tool versions, parameters, and database version in prose
+you can paste into a manuscript. Everything needed to make the run reproducible
+is recorded here.
+
+---
+
+## 12. Read the performance report
+
+Open `performance_report.html`. This one is about the run rather than the
+biology — reach for it when something took longer than expected, or a barcode
+looks wrong.
+
+**Headline figures.** Elapsed time, total CPU time, average number of jobs
+running at once, percentage of your cores used, and peak memory.
+
+**System.** The machine the run was measured on: CPU model, cores, memory,
+operating system, kernel, architecture. Timings only compare meaningfully
+between runs on comparable hardware, so this travels with the report.
+
+**Machine use.** Whether the run kept your machine busy, and if not, what to do
+about it. The usual cause of low utilisation is that each stage reserves more
+threads than it can use: a job cannot start until its full thread count is
+free, so large per-rule thread counts run fewer barcodes at once. Lowering
+`resources.*.cpus` in `config/config.yaml` trades per-job speed for more
+barcodes in flight, which is normally the better trade when barcodes outnumber
+cores.
+
+**Where the time went.** Wall time and CPU time per stage. CPU time larger than
+wall time means the stage used several threads; the ratio between them tells
+you how well it used them.
+
+**Timeline.** Every job placed by when it actually ran, one row per barcode.
+Gaps are idle capacity.
+
+**Worth checking.** QC flags — see the next section.
+
+**Per barcode.** Timings first, then read counts and quality. Click any column
+heading to sort.
+
+---
+
+## 13. Quality control: what gets flagged
+
+The performance report checks every barcode against fixed thresholds and
+explains anything that fails. These are absolute, not relative to the rest of
+your run — a check that only compares barcodes to each other cannot fire when
+every barcode is equally bad, which is the case most worth catching.
+
+| Flag | Threshold | What it usually means |
+|---|---|---|
+| **Low retention** | under 80% of reads survive filtering | Your length window does not match the amplicon. Check the median read length and adjust `--min-length` / `--max-length`. |
+| **Low depth** | fewer than 1,000 raw reads | Too few reads for reliable proportions. Treat that barcode's abundances as indicative only. |
+| **Below run median** | under a quarter of the median depth | Barcoding imbalance — that library was under-represented in the pool. Usually a loading issue, not a data problem. |
+| **Low quality** | filtered median below Q12 | Unusual after filtering. Points at a basecalling or chemistry problem. |
+| **Length outside window** | filtered median outside your configured range | Your amplicon is not the length you configured for. |
+
+**No flags is the expected outcome for a healthy run.** If everything is quiet,
+the reads look the way full-length 16S data should.
+
+---
+
+## 14. Use the tables downstream
+
+The combined tables are plain tab-separated text. Rows are taxa, columns are
+barcodes.
+
+### R
+
+```r
+ab <- read.delim("my_results/07_emu_combined/emu-combined-genus.tsv",
+                 check.names = FALSE)
+
+# apply your barcode -> sample mapping
+map <- read.csv("/path/to/your_run/barcode_map.csv")
+idx <- match(colnames(ab), map$barcode)
+colnames(ab)[!is.na(idx)] <- map$sample[idx[!is.na(idx)]]
+```
+
+### Python
+
+```python
+import pandas as pd
+
+ab = pd.read_csv("my_results/07_emu_combined/emu-combined-genus.tsv", sep="\t")
+
+mapping = pd.read_csv("/path/to/your_run/barcode_map.csv")
+ab = ab.rename(columns=dict(zip(mapping["barcode"], mapping["sample"])))
+```
+
+### phyloseq
+
+Use the counts table as the OTU table and the lineage columns as taxonomy.
+Emu writes the full lineage — species through superkingdom — before the sample
+columns, so split the frame at the first barcode column.
+
+### Excel
+
+Open the `.tsv` directly, or import as tab-delimited. Watch out for Excel
+converting taxon names that look like dates.
+
+---
+
+## 15. Interpreting 16S results
+
+**Genus is the defensible resolution.** Species-level assignment from 16S is
+genuinely hard — many genera contain species whose 16S genes are near-identical,
+and nanopore error rates make it harder. Species tables are provided because
+they are sometimes informative, but conclusions are safer at genus level.
+
+**Relative abundance is compositional.** Proportions sum to 1, so one taxon
+rising means others fall by arithmetic, not biology. Use methods designed for
+compositional data when testing for differences.
+
+**16S copy number varies between organisms**, from one to over fifteen. A
+species with many copies is over-represented relative to its true cell
+abundance. nano16s does not correct for this; no tool does it reliably.
+
+**Absence of evidence.** A taxon missing from your results may be absent from
+the sample, or absent from the reference database, or below detection at your
+sequencing depth.
+
+**Your database version is part of your result.** It is recorded in every
+report. Cite it alongside the tool versions.
+
+---
+
+## 16. Re-running and changing settings
+
+nano16s tracks what has been done. Re-running the same command finishes in
+seconds; changing a setting re-runs only what that setting affects.
+
+```bash
+# resume an interrupted run — same command, nothing lost
+nano16s -d /path/to/your_run/fastq_pass -o my_results
+
+# different filtering: re-runs from the filter step onward,
+# reusing the merged and trimmed reads
+nano16s -d /path/to/your_run/fastq_pass -o my_results --min-length 1200
+
+# newer database: re-runs classification only
+nano16s -d /path/to/your_run/fastq_pass -o my_results \
+        --db ~/.nano16s/db/2026.09/ncbi_16s
+```
+
+**Compare settings side by side** by writing to separate output directories:
+
+```bash
+nano16s -d /path/to/your_run/fastq_pass -o results_q10 --min-quality 10
+nano16s -d /path/to/your_run/fastq_pass -o results_q15 --min-quality 15
+```
+
+Trimming is repeated for each, so this costs a full run rather than a partial
+one.
+
+**To start completely fresh**, delete the output directory. Re-running does not
+discard existing work by design, which is what makes resuming possible.
+
+---
+
+## 17. Processing several runs
+
+Give each run its own output directory and loop:
+
+```bash
+for run in /path/to/runs/*/; do
+    name=$(basename "$run")
+    [ -d "$run/fastq_pass" ] || continue
+    echo "=== $name ==="
+    nano16s -d "$run/fastq_pass" -o "/path/to/results/$name" -y \
+        || echo "$name FAILED — continuing"
+done
+```
+
+Points worth noting:
+
+- **Run them one at a time.** Concurrent runs compete for the same cores and
+  finish no sooner, and a failure is harder to attribute.
+- `|| echo ... ` keeps one bad run from ending the loop.
+- Because completed work is skipped, re-running the loop after a failure costs
+  only the runs that did not finish.
+- **Keep settings identical across runs you intend to compare.** A different
+  length window or database makes the results incomparable.
+
+---
+
+## 18. Troubleshooting
+
+**`nano16s: command not found`**
+Run `conda activate nano16s`. Needed in every new terminal.
+
+**`no barcode* directories inside ...`**
+`-d` is one level too high or too low. It wants the directory that directly
+contains `barcode01/`. Find it with
+`find /path/to/your_run -type d -name fastq_pass`.
+
+**`no Emu database found`**
+Run `nano16s db build` (about ten minutes, once).
+
+**`no .fastq.gz files in ...`**
+That barcode directory is empty, or holds uncompressed `.fastq`. Compress them,
+or remove the directory if the barcode genuinely produced nothing.
+
+**A barcode kept almost no reads**
+Its reads fall outside your length window. Check the median read length in the
+report and widen `--min-length` / `--max-length` if that length is expected for
+your amplicon.
+
+**The run stopped partway**
+Run the same command again. Completed steps are skipped.
+
+**Porechop is slow**
+Expected — it is the slowest stage by a wide margin because it infers adapter
+sequences from your data instead of assuming them. Budget a few minutes per
+barcode.
+
+**The run is using less of my CPU than expected**
+See the Machine use section of the performance report, and section 12.
+
+### On WSL2
+
+**`has older modification time`, or `the counts table … is empty`**
+WSL's clock drifts from the Windows host and can resynchronise mid-run, leaving
+a file with a timestamp behind its own input. Snakemake reads that as a
+corrupted build, deletes the output and stops — often near the end of a long
+run.
+
+From PowerShell:
+
+```powershell
+wsl --shutdown
+```
+
+Then re-run the same command. Completed work is kept, so it finishes quickly.
+Check for drift by comparing `date` in Linux with `Get-Date` in PowerShell;
+more than a second or two apart is the cause. Keeping the machine awake during
+a run avoids it.
+
+**Everything is slow**
+Check your data is not under `/mnt/c/`. Crossing the Windows filesystem
+boundary is several times slower than the Linux filesystem. Copy the run into
+your Linux home directory first.
+
+**`syntax error near unexpected token $'{\r'`**
+A file has Windows line endings, usually from editing the repository through
+Windows. Re-clone, or run `dos2unix` on the affected file.
+
+### Still stuck
+
+Open an issue at
+<https://github.com/lz245/nano16s-local/issues>. Include the output of
+`nano16s --version`, your operating system, the exact command, and the error.
+The `performance.json` from a failed run is small and records the machine and
+settings, which usually answers the first three questions at once.
+
+---
+
+## 19. Reference
+
+### Command line
+
+| Option | Default | What it does |
+|---|---|---|
+| `-d, --input-dir` | *required* | directory containing `barcode*` directories |
+| `-o, --output-dir` | `results` | where output goes |
+| `--db` | newest installed | Emu database directory |
+| `--min-length` | `1000` | shortest read to keep, bp |
+| `--max-length` | `2000` | longest read to keep, bp |
+| `--min-quality` | `10` | minimum mean Phred quality |
+| `-c, --cores` | all but one | CPU cores to use |
+| `-n, --dry-run` | | list the steps and stop |
+| `-y, --yes` | | skip confirmation prompts |
+| `-h, --help` | | full help |
+
+Subcommands: `nano16s db build`, `nano16s db list`, `nano16s test`,
+`nano16s --version`.
+
+### Paths
+
+| Path | What |
+|---|---|
+| `~/.nano16s/db/<version>/` | reference databases |
+| `config/config.yaml` | defaults, including per-rule CPU and memory |
+| `<output>/benchmarks/` | per-job timing and memory records |
+
+`NANO16S_DB` overrides the database root.
+
+### Tuning per-rule resources
+
+`config/config.yaml` sets threads and memory per stage. The thread counts
+determine how many barcodes run concurrently: a job cannot start until its full
+thread count is free, so a large value means fewer barcodes in flight. If the
+performance report shows low core utilisation, lowering these is the lever.
+
+```yaml
+resources:
+  porechop:
+    cpus: 8            # the slowest stage
+    mem_mb: 8000
+  emu:
+    cpus: 8
+    mem_mb: 8000
+```
+
+Change settings there rather than on the command line when you want them to
+apply to every run.
+
+### Citing
+
+Cite the underlying tools, which do the actual work:
+
+- **Emu** — Curry et al. (2022) *Nature Methods* 19:845–853
+- **Porechop_ABI** — Bonenfant et al. (2023) *Bioinformatics Advances* 3:vbac085
+- **Chopper / NanoStat** — De Coster & Rademakers (2023) *Bioinformatics* 39:btad311
+- **minimap2** — Li (2018) *Bioinformatics* 34:3094–3100
+- **Snakemake** — Mölder et al. (2021) *F1000Research* 10:33
+
+See [CITATION.cff](../CITATION.cff) for nano16s itself, and record the database
+version from your report.
