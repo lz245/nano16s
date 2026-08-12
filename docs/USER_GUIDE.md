@@ -101,7 +101,7 @@ know before that is worth doing.
 | **Operating system** | Windows 10/11, macOS (Intel or Apple Silicon), or Linux |
 | **RAM** | 8 GB minimum, 16 GB or more comfortable |
 | **CPU** | any; more cores means proportionally faster runs |
-| **Disk** | about 3x your data, plus ~1 GB software and ~150 MB database |
+| **Disk** | about 3× your data, plus ~1 GB software and ~150 MB database |
 | **Internet** | needed for setup and once to build the database; runs are offline |
 
 On Windows everything runs inside WSL2, which is a real Linux environment
@@ -124,8 +124,8 @@ everything against bundled demo data.
 
 | | |
 |---|---|
-| Setting up the computer (section 3) | 15-40 minutes, once |
-| Installing nano16s (section 4) | 5-15 minutes, once |
+| Setting up the computer (section 3) | 15–40 minutes, once |
+| Installing nano16s (section 4) | 5–15 minutes, once |
 | Building the database (section 5) | ~10 minutes, once |
 | Verifying it works (section 6) | ~5 minutes |
 | A real run | minutes to hours, depending on data size (section 9) |
@@ -175,6 +175,10 @@ right-click *Windows PowerShell*, choose *Run as administrator*.
 wsl --install
 ```
 
+> This single command needs Windows 11, or Windows 10 version 2004 or newer.
+> On an older Windows 10, `wsl --install` will not be recognised; update
+> Windows first, or follow Microsoft's manual WSL2 install steps.
+
 **3. Restart your computer** when it asks.
 
 **4. Finish setting up Ubuntu.** After restarting, an Ubuntu window opens and
@@ -186,6 +190,16 @@ If no Ubuntu window opens, press Start and run *Ubuntu*.
 
 **5. From here on, use the Ubuntu terminal, not PowerShell.** Every command in
 the rest of this guide is typed there. Open it any time from the Start menu.
+
+**6. Install the two tools Ubuntu does not always ship with.** In the Ubuntu
+terminal:
+
+```bash
+sudo apt update && sudo apt install -y curl git
+```
+
+It will ask for the Linux password you chose in step 4. This is harmless if
+they are already installed.
 
 > **Where to keep your data.** Work inside the Linux home directory — the
 > place the Ubuntu terminal starts in. You can reach Windows drives under
@@ -274,8 +288,15 @@ git --version       # a version number
 echo $HOME          # your home directory
 ```
 
-Three version numbers and a path means the machine is ready. Continue to
+Two version numbers and a path means the machine is ready — continue to
 section 4.
+
+If one of them is missing:
+
+| Missing | Fix |
+|---|---|
+| `conda` | open a new terminal; if it persists, `source ~/.bashrc` |
+| `git` | `sudo apt install -y git` (Linux/WSL), or `xcode-select --install` (macOS) |
 
 ---
 
