@@ -22,10 +22,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "workflow" / "scripts"))
 
+import make_perf_report  # noqa: E402
 from make_perf_report import (  # noqa: E402
     MIN_MEDIAN_Q, MIN_READS, MIN_RETENTION_PCT,
     build_rows, dur, ffix, find_flags, fint, parse_nanostat, read_benchmarks,
-    stage_bars_svg, timeline_svg,
+    stage_bars_svg, system_info, timeline_svg,
 )
 
 BENCH_HEADER = [
@@ -258,6 +259,72 @@ def test_a_barcode_with_no_data_is_not_flagged_for_every_threshold():
                             filtered_median_len=None,
                             filtered_median_q=None)], CFG)
     assert flags == []
+
+
+# ---------------------------------------------------------------------------
+# system_info
+# ---------------------------------------------------------------------------
+
+def test_system_info_reports_the_keys_the_report_renders():
+    """Every key the page reads must exist, even where the value is unknown.
+
+    The report indexes these directly; a missing key is a KeyError that takes
+    the whole report down rather than leaving one field blank.
+    """
+    info = system_info()
+    for key in ("hostname", "cpu_model", "cpu_cores_physical",
+                "cpu_threads_logical", "ram_mb", "os", "platform", "kernel",
+                "arch", "wsl", "python"):
+        assert key in info, f"system_info() is missing {key}"
+
+
+def test_system_info_values_are_sane_here():
+    info = system_info()
+    assert info["cpu_threads_logical"] >= 1
+    assert info["ram_mb"] > 0
+    assert info["python"].count(".") >= 1
+
+
+def test_system_info_survives_a_machine_with_no_proc(monkeypatch):
+    """Nothing about the hardware is worth failing a finished run over.
+
+    /proc is absent on macOS and inside some containers; sysctl is absent on
+    Linux. Both lookups failing must degrade to None, not raise.
+    """
+    def no_open(*args, **kwargs):
+        raise OSError("no /proc here")
+
+    monkeypatch.setattr("builtins.open", no_open)
+    monkeypatch.setattr(make_perf_report, "_sysctl", lambda name: None)
+    monkeypatch.setattr(make_perf_report.os, "sysconf",
+                        lambda name: (_ for _ in ()).throw(ValueError()))
+
+    info = system_info()
+    assert info["ram_mb"] is None
+    assert info["cpu_cores_physical"] is None
+    # os.cpu_count() and platform do not touch /proc, so these still answer.
+    assert info["cpu_threads_logical"] >= 1
+    assert info["python"]
+
+
+def test_wsl_is_reported_as_both_windows_and_linux(monkeypatch):
+    """"Win or Linux" has a third answer, and it is the one in use here."""
+    monkeypatch.setattr(make_perf_report, "_is_wsl", lambda: True)
+    monkeypatch.setattr(make_perf_report.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(make_perf_report, "_os_name", lambda: "Ubuntu 26.04 LTS")
+    info = system_info()
+    assert info["wsl"] is True
+    assert "Windows" in info["platform"]
+    assert "Ubuntu" in info["platform"]
+
+
+def test_native_linux_is_not_labelled_windows(monkeypatch):
+    monkeypatch.setattr(make_perf_report, "_is_wsl", lambda: False)
+    monkeypatch.setattr(make_perf_report.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(make_perf_report, "_os_name", lambda: "Ubuntu 24.04 LTS")
+    info = system_info()
+    assert info["wsl"] is False
+    assert "Windows" not in info["platform"]
 
 
 # ---------------------------------------------------------------------------

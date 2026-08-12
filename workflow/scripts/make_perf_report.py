@@ -29,7 +29,11 @@ import glob
 import html
 import json
 import os
+import platform
 import re
+import shutil
+import socket
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -56,6 +60,139 @@ MIN_RETENTION_PCT = 80.0    # below this, the length window likely mismatches
 MIN_READS = 1000            # below this, abundances are not worth quoting
 LOW_DEPTH_FACTOR = 0.25     # also flag barcodes far below the run's median
 MIN_MEDIAN_Q = 12.0         # filtered reads should clear this comfortably
+
+
+# ---------------------------------------------------------------------------
+# the machine
+# ---------------------------------------------------------------------------
+# Timings mean little without the hardware they were measured on: "8 hours"
+# is a different result on 4 cores than on 19. Everything below is read from
+# the standard library and /proc, with a short sysctl fallback for macOS, so
+# no dependency is added and nothing here can fail the report.
+
+def _sysctl(name):
+    """macOS: one sysctl value, or None. Never raises."""
+    exe = shutil.which("sysctl")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "-n", name], capture_output=True, text=True,
+                             timeout=5)
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _cpu_model():
+    try:
+        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith(("model name", "Model name", "Hardware")):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return _sysctl("machdep.cpu.brand_string") or platform.processor() or None
+
+
+def _physical_cores():
+    """Distinct (socket, core) pairs — hyperthreads are not extra cores."""
+    try:
+        pairs, cur = set(), {}
+        with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    if "physical id" in cur and "core id" in cur:
+                        pairs.add((cur["physical id"], cur["core id"]))
+                    cur = {}
+                    continue
+                if ":" in line:
+                    k, _, v = line.partition(":")
+                    cur[k.strip()] = v.strip()
+            if "physical id" in cur and "core id" in cur:
+                pairs.add((cur["physical id"], cur["core id"]))
+        if pairs:
+            return len(pairs)
+    except OSError:
+        pass
+    mac = _sysctl("hw.physicalcpu")
+    return int(mac) if mac and mac.isdigit() else None
+
+
+def _total_ram_mb():
+    try:
+        with open("/proc/meminfo", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) / 1024.0     # kB -> MB
+    except (OSError, ValueError, IndexError):
+        pass
+    mac = _sysctl("hw.memsize")
+    if mac and mac.isdigit():
+        return int(mac) / (1024.0 * 1024.0)
+    try:                                    # POSIX, present on most Unixes
+        return (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+                / (1024.0 * 1024.0))
+    except (ValueError, OSError, AttributeError):
+        return None
+
+
+def _os_name():
+    """Distribution or product name, not just the kernel."""
+    if platform.system() == "Linux":
+        try:
+            with open("/etc/os-release", encoding="utf-8") as fh:
+                fields = {}
+                for line in fh:
+                    if "=" in line:
+                        k, _, v = line.partition("=")
+                        fields[k.strip()] = v.strip().strip('"')
+            name = fields.get("PRETTY_NAME") or fields.get("NAME")
+            if name:
+                return name
+        except OSError:
+            pass
+        return "Linux"
+    if platform.system() == "Darwin":
+        return f"macOS {platform.mac_ver()[0]}".strip()
+    return f"{platform.system()} {platform.release()}".strip()
+
+
+def _is_wsl():
+    """WSL is Linux hosted by Windows; reporting only one of the two misleads."""
+    try:
+        with open("/proc/version", encoding="utf-8", errors="replace") as fh:
+            blob = fh.read().lower()
+        return "microsoft" in blob or "wsl" in blob
+    except OSError:
+        return "microsoft" in platform.release().lower()
+
+
+def system_info():
+    """Hardware and OS the run executed on. Best effort; keys may be None."""
+    logical = os.cpu_count()
+    physical = _physical_cores()
+    wsl = _is_wsl() if platform.system() == "Linux" else False
+    osname = _os_name()
+    platform_label = osname
+    if wsl:
+        # Dr. Li asked for "Win or Linux"; on WSL the honest answer is both,
+        # and it matters — the filesystem and scheduler are not native Linux.
+        platform_label = f"{osname} on Windows (WSL2)"
+
+    return {
+        "hostname": socket.gethostname() or None,
+        "cpu_model": _cpu_model(),
+        "cpu_cores_physical": physical,
+        "cpu_threads_logical": logical,
+        "ram_mb": _total_ram_mb(),
+        "os": osname,
+        "platform": platform_label,
+        "kernel": platform.release() or None,
+        "arch": platform.machine() or None,
+        "wsl": wsl,
+        "python": platform.python_version(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -668,9 +805,13 @@ def main():
         out_csv.write_text("barcode\n", encoding="utf-8")
 
     # --- JSON, for run-to-run comparison ---------------------------------
+    # system goes in too: comparing two runs' timings without comparing the
+    # machines they ran on is how a hardware difference gets read as a
+    # regression.
     out_json.write_text(json.dumps({
         "nano16s_version": version or None,
         "generated": datetime.now().isoformat(timespec="seconds"),
+        "system": system_info(),
         "run": {
             "started": started.isoformat(sep=" ", timespec="seconds") if started else None,
             "finished": finished.isoformat(sep=" ", timespec="seconds") if finished else None,
@@ -722,6 +863,42 @@ def main():
     ]:
         h.append(f"<div class='stat'><div class='n'>{n}</div>"
                  f"<div class='k'>{esc(k)}</div><div class='h'>{esc(hint)}</div></div>")
+    h.append("</section>")
+
+    # the machine, before any judgement about how well it was used
+    sysinfo = system_info()
+    ram_gb = (sysinfo["ram_mb"] / 1024.0) if sysinfo["ram_mb"] else None
+    core_desc = "-"
+    if sysinfo["cpu_cores_physical"] and sysinfo["cpu_threads_logical"]:
+        core_desc = f"{sysinfo['cpu_cores_physical']} cores"
+        if sysinfo["cpu_threads_logical"] != sysinfo["cpu_cores_physical"]:
+            core_desc += f" / {sysinfo['cpu_threads_logical']} threads"
+    elif sysinfo["cpu_threads_logical"]:
+        core_desc = f"{sysinfo['cpu_threads_logical']} threads"
+
+    h.append("<section class='panel'><h2>System</h2>"
+             "<p class='sub'>The machine this run was measured on. Timings are "
+             "only comparable between runs on comparable hardware.</p>"
+             "<div class='meta'>")
+    for k, v in [
+        ("CPU", sysinfo["cpu_model"] or "-"),
+        ("Cores", core_desc),
+        ("Memory", f"{ram_gb:,.1f} GB" if ram_gb else "-"),
+        ("Operating system", sysinfo["platform"] or "-"),
+        ("Kernel", sysinfo["kernel"] or "-"),
+        ("Architecture", sysinfo["arch"] or "-"),
+        ("Host", sysinfo["hostname"] or "-"),
+        ("Cores given to this run", cores or "-"),
+    ]:
+        h.append(f"<div><dt>{esc(k)}</dt><dd>{esc(v)}</dd></div>")
+    h.append("</div>")
+    # Asking for more cores than exist is silently capped by Snakemake, so the
+    # run looks fine while quietly being narrower than intended.
+    if cores and sysinfo["cpu_threads_logical"] and \
+            cores > sysinfo["cpu_threads_logical"]:
+        h.append(f"<p class='note'>This run was given {cores} cores but the "
+                 f"machine has {sysinfo['cpu_threads_logical']}; Snakemake caps "
+                 f"the difference.</p>")
     h.append("</section>")
 
     # verdict on machine use
