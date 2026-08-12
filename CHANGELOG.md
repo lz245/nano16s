@@ -10,7 +10,26 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-08-11
+
 ### Added
+- A performance report, written on every run alongside the existing one:
+  `performance_report.html`, `performance_summary.csv` and `performance.json`.
+  It reports where the run spent its time, how much of the machine it used,
+  and which barcodes fall below the QC floors.
+- `benchmark:` records for every per-sample rule, so timings carry CPU time and
+  peak memory rather than wall clock alone. These land in `benchmarks/`.
+- The performance report records the machine it ran on — CPU model, physical
+  cores and threads, memory, operating system, kernel and architecture — since
+  a runtime means little without the hardware behind it. WSL is reported as
+  both Linux and Windows, because it is both and the distinction affects I/O.
+  Detection uses only the standard library, so no dependency is added and a
+  machine that will not answer leaves the field blank rather than failing the
+  run.
+- QC checks with absolute floors — retention, read depth, median quality, and
+  whether the filtered median read length falls inside the configured length
+  window. A purely relative check cannot fire when a whole run is uniformly
+  bad, which is the case most worth catching.
 - `CONTRIBUTING.md`, this changelog, `ruff.toml` and pre-commit hooks.
 - Issue templates that ask for the version and environment details needed to
   reproduce a problem.

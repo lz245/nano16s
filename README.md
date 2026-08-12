@@ -131,7 +131,11 @@ silently discard most of your data.
 ```
 my_results/
 ├── nano16s_report.html          ← open this first
+├── performance_report.html      run timings, machine use, per-barcode QC
+├── performance_summary.csv      the same numbers, per barcode
+├── performance.json             machine-readable, for comparing runs
 ├── preprocessing_summary.csv    reads surviving each stage, per barcode
+├── benchmarks/                  per-job wall time, CPU time, peak memory
 ├── 01_merged/                   intermediates; safe to delete when done
 ├── 02_nanostat_raw/
 ├── 03_trimmed/
@@ -154,6 +158,20 @@ phyloseq, or Excel.
 The HTML report is self-contained — one file, no internet needed, safe to
 email. It carries the tool versions, parameters, and database version used, in
 a form you can paste into a Methods section.
+
+`performance_report.html` is the companion for the run itself: which stage was
+the bottleneck, how much of the machine was actually used, and which barcodes
+fall below the QC floors (retention, depth, quality, and whether the filtered
+read length matches the configured window). Open it when a run took longer than
+expected or a barcode looks wrong.
+
+Its timings come from Snakemake's per-job benchmark records, so they include
+CPU time and peak memory rather than wall clock alone. If the report shows a
+low core utilisation, the usual cause is that `resources.*.cpus` in
+`config.yaml` reserves more threads per job than the work needs: a job cannot
+start until its full thread count is free, so a large value runs fewer barcodes
+at once. Lowering it trades per-job speed for concurrency, which is normally
+the better trade when barcodes outnumber cores.
 
 **A note on interpretation.** Species-level assignment from 16S is genuinely
 hard: many genera contain species whose 16S genes are near-identical. Genus
