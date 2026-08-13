@@ -1,5 +1,5 @@
 # nano16s
-
+[![CI](https://github.com/lz245/nano16s-local/actions/workflows/ci.yml/badge.svg)](https://github.com/lz245/nano16s-local/actions/workflows/ci.yml)
 Taxonomic profiling of Oxford Nanopore full-length 16S rRNA amplicon data, on
 an ordinary computer.
 
