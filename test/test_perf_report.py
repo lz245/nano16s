@@ -199,6 +199,7 @@ def test_read_counts_are_integers_not_floats(tmp_path):
 def row(**kw):
     base = {
         "barcode": "barcode01", "raw_reads": 10000, "retention_pct": 99.0,
+        "filtered_reads": 9900,
         "filtered_median_len": 1450, "filtered_median_q": 17.5,
     }
     base.update(kw)
@@ -256,9 +257,27 @@ def test_a_clean_run_produces_no_flags():
 def test_a_barcode_with_no_data_is_not_flagged_for_every_threshold():
     """An empty barcode should not produce four separate complaints."""
     flags = find_flags([row(raw_reads=None, retention_pct=None,
+                            filtered_reads=None,
                             filtered_median_len=None,
                             filtered_median_q=None)], CFG)
     assert flags == []
+
+
+def test_a_barcode_the_filter_emptied_is_not_given_a_quality():
+    """REGRESSION: "filtered median quality is Q0.0" on a barcode with no reads.
+
+    NanoStat writes zeros for an empty file rather than omitting the fields,
+    so a barcode whose reads were all filtered out arrived here looking like a
+    measurement of zero. Retention already says what happened, and names the
+    length window as the likely cause; a second flag asserting a quality that
+    was never measured only obscures it. This is the state a run with a length
+    window that does not match the amplicon puts every barcode into.
+    """
+    flags = find_flags([row(retention_pct=0.0, filtered_reads=0,
+                            filtered_median_len=0, filtered_median_q=0.0)], CFG)
+    assert len(flags) == 1
+    assert "survived filtering" in flags[0][2]
+    assert not any("median quality" in m for _, _, m in flags)
 
 
 # ---------------------------------------------------------------------------

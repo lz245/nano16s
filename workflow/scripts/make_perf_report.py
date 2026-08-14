@@ -702,7 +702,13 @@ def find_flags(rows, cfg):
             flags.append((bc, "warn",
                           f"{reads:,} raw reads is well below the run median "
                           f"of {median_depth:,}. Check the barcoding balance."))
-        if med_q is not None and med_q < MIN_MEDIAN_Q:
+        # Only when reads survived. NanoStat writes zeros for an empty file,
+        # so a barcode the filter emptied would otherwise be reported as
+        # "median quality is Q0.0" -- a measurement of nothing, stated beside
+        # the retention flag that already gives the real reason. The length
+        # check below has always guarded this with `med_len > 0`; this is the
+        # same guard, made explicit about what it depends on.
+        if r["filtered_reads"] and med_q is not None and med_q < MIN_MEDIAN_Q:
             flags.append((bc, "bad",
                           f"filtered median quality is Q{med_q:.1f}, under the "
                           f"Q{MIN_MEDIAN_Q:.0f} floor."))

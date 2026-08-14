@@ -18,6 +18,13 @@ report, so a result can always be traced to the database that produced it.
   counts and quality — which come from NanoStat — while the timing sections
   vanished and every timing column read `-`, with nothing to explain why.
   Directories created before 1.1.0 hit this the first time they are re-used.
+- A barcode whose reads were all filtered out is no longer reported as having
+  a median quality of Q0.0. NanoStat writes zeros for an empty file rather
+  than omitting the fields, so an emptied barcode read as a measurement of
+  zero and drew a second flag beside the retention one that already gave the
+  real reason. A run whose length window does not match the amplicon puts
+  every barcode into this state, so it doubled the flags exactly when the
+  report most needed to be readable.
 
 ## [1.1.0] — 2026-08-11
 
