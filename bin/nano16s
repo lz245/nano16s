@@ -103,6 +103,10 @@ OUTPUT
         emu-combined-species-counts.tsv  read counts, species level
         ... and the same for genus and phylum
       nano16s_report.html                self-contained summary; open it first
+      performance_report.html            run timings, machine use, per-barcode QC
+      performance_summary.csv            the same numbers, one row per barcode
+      performance.json                   machine-readable, for comparing runs
+      benchmarks/                        per-job wall time, CPU time, peak memory
 HELP
     exit 0
 }
@@ -297,6 +301,15 @@ CMD=(
 if [[ -z "$DRY_RUN" ]]; then
     echo ""
     echo "Done. Results in $OUTPUT_DIR"
-    [[ -f "$OUTPUT_DIR/nano16s_report.html" ]] && \
-        echo "Open the summary:  $OUTPUT_DIR/nano16s_report.html"
+    # `if`, not `[[ ... ]] && echo`. That form was the last command in the
+    # script, so its own false branch became the exit status: a run that
+    # finished cleanly but left no report file reported failure.
+    if [[ -f "$OUTPUT_DIR/nano16s_report.html" ]]; then
+        echo "Open the summary:      $OUTPUT_DIR/nano16s_report.html"
+    fi
+    # Named here because this is where people look for it. It is written on
+    # every run, but nothing in the CLI said so.
+    if [[ -f "$OUTPUT_DIR/performance_report.html" ]]; then
+        echo "How the run went:      $OUTPUT_DIR/performance_report.html"
+    fi
 fi
