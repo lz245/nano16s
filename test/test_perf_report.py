@@ -199,6 +199,7 @@ def test_read_counts_are_integers_not_floats(tmp_path):
 def row(**kw):
     base = {
         "barcode": "barcode01", "raw_reads": 10000, "retention_pct": 99.0,
+        "filtered_reads": 9900,
         "filtered_median_len": 1450, "filtered_median_q": 17.5,
     }
     base.update(kw)
@@ -256,9 +257,27 @@ def test_a_clean_run_produces_no_flags():
 def test_a_barcode_with_no_data_is_not_flagged_for_every_threshold():
     """An empty barcode should not produce four separate complaints."""
     flags = find_flags([row(raw_reads=None, retention_pct=None,
+                            filtered_reads=None,
                             filtered_median_len=None,
                             filtered_median_q=None)], CFG)
     assert flags == []
+
+
+def test_a_barcode_the_filter_emptied_is_not_given_a_quality():
+    """REGRESSION: "filtered median quality is Q0.0" on a barcode with no reads.
+
+    NanoStat writes zeros for an empty file rather than omitting the fields,
+    so a barcode whose reads were all filtered out arrived here looking like a
+    measurement of zero. Retention already says what happened, and names the
+    length window as the likely cause; a second flag asserting a quality that
+    was never measured only obscures it. This is the state a run with a length
+    window that does not match the amplicon puts every barcode into.
+    """
+    flags = find_flags([row(retention_pct=0.0, filtered_reads=0,
+                            filtered_median_len=0, filtered_median_q=0.0)], CFG)
+    assert len(flags) == 1
+    assert "survived filtering" in flags[0][2]
+    assert not any("median quality" in m for _, _, m in flags)
 
 
 # ---------------------------------------------------------------------------
@@ -423,3 +442,87 @@ def test_timeline_skips_jobs_with_no_recoverable_start():
              "start": None, "end": None}]
     svg, _ = timeline_svg(jobs, ["emu"])
     assert "No timing data" in svg
+
+
+# ---------------------------------------------------------------------------
+# the whole report
+# ---------------------------------------------------------------------------
+
+class FakeParams(dict):
+    """Snakemake exposes params as attributes; a dict subclass is enough."""
+
+    __getattr__ = dict.__getitem__
+
+
+class FakeSnakemake:
+    def __init__(self, params, output):
+        self.params = FakeParams(params)
+        self.output = FakeParams(output)
+
+
+def run_report(tmp_path, *, benchmarks=True):
+    """Generate a complete report and return its HTML.
+
+    main() reads nothing from snakemake.input -- that exists only to order
+    the DAG -- so a params/output stub drives the whole thing.
+    """
+    raw, filt, bench = (tmp_path / "raw", tmp_path / "filt", tmp_path / "bench")
+    for sample in ("barcode01", "barcode02"):
+        write_nanostat(raw, sample, 5000)
+        write_nanostat(filt, sample, 4800, filtered=True)
+        if benchmarks:
+            write_bench(bench, "porechop", sample, 20.0, cpu=60.0, rss=100.0)
+            write_bench(bench, "emu", sample, 10.0, cpu=50.0, rss=500.0)
+
+    out = {
+        "html": str(tmp_path / "performance_report.html"),
+        "csv": str(tmp_path / "performance_summary.csv"),
+        "json": str(tmp_path / "performance.json"),
+    }
+    make_perf_report.snakemake = FakeSnakemake(
+        {
+            "bench_dir": str(bench), "raw_dir": str(raw),
+            "filtered_dir": str(filt), "cores": 8,
+            "min_length": 1000, "max_length": 2000, "min_quality": 10,
+            "db": "ncbi_16s", "version": "1.1.0",
+        },
+        out,
+    )
+    try:
+        make_perf_report.main()
+    finally:
+        del make_perf_report.snakemake
+    return Path(out["html"]).read_text(encoding="utf-8")
+
+
+def test_a_normal_run_reports_where_the_time_went(tmp_path):
+    """Guards the test below: these sections are present when timings exist."""
+    html = run_report(tmp_path)
+    assert "<h2>Where the time went</h2>" in html
+    assert "<h2>Machine use</h2>" in html
+    assert "<h2>No timing data</h2>" not in html
+
+
+def test_a_run_with_no_benchmarks_explains_itself(tmp_path):
+    """REGRESSION: the report went hollow without saying why.
+
+    Re-running into a directory that already holds finished results leaves
+    Snakemake nothing to run, so no job records a benchmark. The QC half of
+    the report still renders from NanoStat, so the page looked complete while
+    'Machine use' and 'Where the time went' had silently vanished and every
+    timing read '-'. That is indistinguishable from a broken report.
+    """
+    html = run_report(tmp_path, benchmarks=False)
+
+    # The timing sections are genuinely gone -- there is nothing to put in
+    # them -- so the report has to account for their absence. Match the
+    # heading, not the words: "No timing data" also appears in the timeline
+    # placeholder, which was already there while the report was still silent.
+    assert "<h2>Where the time went</h2>" not in html
+    assert "<h2>Machine use</h2>" not in html
+    assert "<h2>No timing data</h2>" in html
+    assert "--forceall" in html
+
+    # And the half that does not depend on timings is still there.
+    assert "barcode01" in html
+    assert "Per barcode" in html
