@@ -901,6 +901,31 @@ def main():
                  f"the difference.</p>")
     h.append("</section>")
 
+    # No benchmark records at all. The QC half of this report comes from
+    # NanoStat and is unaffected, so the page still renders -- which makes
+    # silence the wrong response: "Machine use" and "Where the time went"
+    # simply vanish, every timing column reads "-", and nothing says why. A
+    # reader concludes the report is broken.
+    #
+    # The usual cause is re-running into a directory whose outputs already
+    # exist. Snakemake finds every one current, runs no stage job, and a
+    # benchmark is written by a job that runs. Directories built before 1.1.0
+    # added `benchmark:` land here on their first re-run.
+    if not jobs:
+        h.append(
+            "<section class='panel'><h2>No timing data</h2>"
+            "<p class='sub'>This run recorded no <code>benchmark:</code> "
+            "files, so every timing in this report is blank. Read counts and "
+            "quality are unaffected &mdash; they come from NanoStat, not from "
+            "the timings.</p>"
+            "<p class='note'>A benchmark is written by a job that runs. If the "
+            "output directory already held finished results, Snakemake had "
+            "nothing to run and so measured nothing &mdash; which is also what "
+            "a directory created before nano16s 1.1.0 does the first time it "
+            "is re-used. To get timings, point <code>-o</code> at a new "
+            "directory, or re-run this one with <code>--forceall</code>.</p>"
+            "</section>")
+
     # verdict on machine use
     if parallelism and cores:
         # Two different things, easily conflated. Concurrency counts jobs;
