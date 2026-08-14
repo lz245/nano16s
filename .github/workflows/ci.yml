@@ -43,8 +43,12 @@ jobs:
       - name: Install pytest
         run: python -m pip install --upgrade pip pytest
 
+      # The whole directory, not one file. Naming test_parsers.py explicitly
+      # meant test_perf_report.py -- 31 of the 53 tests -- never ran here, so
+      # the performance report was the least covered part of the code in CI
+      # despite being the best covered by tests.
       - name: Run unit tests
-        run: python -m pytest test/test_parsers.py -v
+        run: python -m pytest test/ -v
 
       - name: Check every script at least parses
         run: |
@@ -54,6 +58,33 @@ jobs:
           for f in bin/nano16s install.sh; do
             bash -n "$f" || exit 1
           done
+
+  # ---------------------------------------------------------------------
+  # ruff.toml and .pre-commit-config.yaml already define the linting, but
+  # pre-commit is opt-in ("Optional, but recommended"), so nothing enforced
+  # it on a contributor who had not installed the hooks. This runs the same
+  # two linters with the same configuration, once, in about fifteen seconds.
+  # ---------------------------------------------------------------------
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the linters
+        run: python -m pip install --upgrade pip ruff shellcheck-py
+
+      # Reads ruff.toml, so this cannot drift from what pre-commit does.
+      - name: ruff
+        run: ruff check .
+
+      # Same file set as the shellcheck pre-commit hook.
+      - name: shellcheck
+        run: shellcheck bin/nano16s install.sh
 
   # ---------------------------------------------------------------------
   # Does the documented install actually work on a clean machine? This is
@@ -224,11 +255,49 @@ jobs:
           nano16s db build
           nano16s db list
 
+      # `nano16s test` picks its own output directory with
+      # `mktemp -d "${TMPDIR:-/tmp}/nano16s_test_XXXXXX"`. Pointing TMPDIR at a
+      # directory we name means the upload step below can glob for it rather
+      # than assume /tmp, which is only correct while the runner leaves TMPDIR
+      # unset.
       - name: Run the bundled demo end to end
+        env:
+          TMPDIR: ${{ runner.temp }}/demo
         run: |
           source "$(conda info --base)/etc/profile.d/conda.sh"
           conda activate nano16s
+          mkdir -p "$TMPDIR"
           nano16s test
+
+      # upload-artifact's if-no-files-found is all-or-nothing: it reports on the
+      # patterns collectively, so a single pattern matching nothing still
+      # uploads a green, quietly incomplete artifact. That is exactly how the
+      # performance report stayed missing from every artifact since it was
+      # added. Assert the list here, where each name is checked on its own.
+      - name: Every file the artifact promises exists
+        run: |
+          RUN_DIR="$(ls -d "${{ runner.temp }}"/demo/nano16s_test_* | head -1)"
+          echo "run directory: $RUN_DIR"
+          MISSING=0
+          for f in nano16s_report.html \
+                   performance_report.html \
+                   performance_summary.csv \
+                   performance.json \
+                   preprocessing_summary.csv; do
+            if [ -s "$RUN_DIR/$f" ]; then
+              echo "  ok      $f ($(wc -c < "$RUN_DIR/$f") bytes)"
+            else
+              echo "  MISSING $f"
+              MISSING=1
+            fi
+          done
+          # Six per-sample rules record one benchmark each per barcode. Zero
+          # here means the timings behind the performance report were never
+          # written, which leaves the report rendering but hollow.
+          N_BENCH="$(find "$RUN_DIR/benchmarks" -name '*.tsv' 2>/dev/null | wc -l)"
+          echo "  benchmark records: $N_BENCH"
+          [ "$N_BENCH" -gt 0 ] || MISSING=1
+          exit "$MISSING"
 
       - name: Keep the report and tables for inspection
         if: always()
@@ -236,8 +305,15 @@ jobs:
         with:
           name: demo-results
           path: |
-            /tmp/nano16s_test_*/nano16s_report.html
-            /tmp/nano16s_test_*/preprocessing_summary.csv
-            /tmp/nano16s_test_*/07_emu_combined/
-          if-no-files-found: warn
+            ${{ runner.temp }}/demo/nano16s_test_*/nano16s_report.html
+            ${{ runner.temp }}/demo/nano16s_test_*/performance_report.html
+            ${{ runner.temp }}/demo/nano16s_test_*/performance_summary.csv
+            ${{ runner.temp }}/demo/nano16s_test_*/performance.json
+            ${{ runner.temp }}/demo/nano16s_test_*/preprocessing_summary.csv
+            ${{ runner.temp }}/demo/nano16s_test_*/benchmarks/
+            ${{ runner.temp }}/demo/nano16s_test_*/07_emu_combined/
+          # Catches the whole directory having moved -- if TMPDIR stops being
+          # honoured, every pattern misses at once and this fails rather than
+          # publishing an empty artifact.
+          if-no-files-found: error
           retention-days: 14
