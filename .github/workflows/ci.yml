@@ -275,8 +275,23 @@ jobs:
       # performance report stayed missing from every artifact since it was
       # added. Assert the list here, where each name is checked on its own.
       - name: Every file the artifact promises exists
+        # Plain bash, not the job's `bash -el`. A *login* shell sources
+        # ~/.bash_logout on the way out, and Ubuntu's runs `clear_console -q`,
+        # which fails with no terminal attached and takes the shell's exit
+        # status with it -- so `exit 0` leaves the step reporting 1. The check
+        # below found all five files and 36 benchmark records and still failed
+        # the job. Nothing here needs conda, so the login shell buys nothing.
+        shell: bash
         run: |
-          RUN_DIR="$(ls -d "${{ runner.temp }}"/demo/nano16s_test_* | head -1)"
+          # A glob rather than `ls | head`: `shell: bash` adds pipefail, under
+          # which a pipe whose left side is cut short by `head` fails the step.
+          shopt -s nullglob
+          DIRS=("${{ runner.temp }}"/demo/nano16s_test_*/)
+          if [ "${#DIRS[@]}" -eq 0 ]; then
+            echo "no run directory under ${{ runner.temp }}/demo -- TMPDIR was not honoured"
+            exit 1
+          fi
+          RUN_DIR="${DIRS[0]%/}"
           echo "run directory: $RUN_DIR"
           MISSING=0
           for f in nano16s_report.html \
