@@ -10,6 +10,7 @@ Run with:
     python -m pytest test/ -v
 """
 
+import io
 import sys
 from pathlib import Path
 
@@ -22,6 +23,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from make_report import (  # noqa: E402
     read_abundance, read_summary, _clean_sample, composition_svg, funnel_svg,
 )
+import build_emu_db  # noqa: E402
 from build_emu_db import species_ancestor  # noqa: E402
 
 
@@ -233,3 +235,52 @@ def test_composition_folds_the_tail_into_other():
     svg, legend, _ = composition_svg(samples, table, "species")
     assert "Other" in legend
     assert legend.count("<i class=") == 8  # 7 taxa + Other
+
+
+# ---------------------------------------------------------------------------
+# build_emu_db downloads
+# ---------------------------------------------------------------------------
+
+class FakeResponse(io.BytesIO):
+    """Just enough of an HTTP response for shutil.copyfileobj."""
+
+    def __init__(self, body, declared_length):
+        super().__init__(body)
+        self.headers = {"Content-Length": declared_length}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
+
+def test_a_complete_download_is_accepted(tmp_path, monkeypatch):
+    monkeypatch.setattr(build_emu_db.urllib.request, "urlopen",
+                        lambda url, timeout=None: FakeResponse(b"abcdef", "6"))
+    out = tmp_path / "f.gz"
+    build_emu_db._download("http://example/f.gz", out)
+    assert out.read_bytes() == b"abcdef"
+
+
+def test_a_truncated_download_is_rejected(tmp_path, monkeypatch):
+    """REGRESSION: a connection cut mid-transfer ends cleanly.
+
+    The short file used to be renamed into place and then treated as cached
+    forever, so every later build died in gzip.open with EOFError and nothing
+    pointed at the cache. Refusing it here is what makes a retry possible.
+    """
+    monkeypatch.setattr(build_emu_db.urllib.request, "urlopen",
+                        lambda url, timeout=None: FakeResponse(b"abc", "6"))
+    out = tmp_path / "f.gz"
+    with pytest.raises(OSError, match="truncated"):
+        build_emu_db._download("http://example/f.gz", out)
+
+
+def test_a_server_that_declares_no_length_is_still_checked_for_emptiness(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(build_emu_db.urllib.request, "urlopen",
+                        lambda url, timeout=None: FakeResponse(b"", None))
+    with pytest.raises(OSError, match="empty"):
+        build_emu_db._download("http://example/f.gz", tmp_path / "f.gz")

@@ -69,6 +69,26 @@ def log(msg: str) -> None:
 # Download
 # ---------------------------------------------------------------------------
 
+# No timeout means block forever: urlopen defaults to the global socket
+# timeout, which is None. An NCBI connection that stalls rather than closing
+# left `nano16s db build` hanging with no output and nothing to wait for.
+TIMEOUT_S = 120
+ATTEMPTS = 3
+
+
+def _download(url: str, tmp: Path) -> None:
+    """One attempt. Verifies the length the server promised."""
+    with urllib.request.urlopen(url, timeout=TIMEOUT_S) as r:
+        declared = r.headers.get("Content-Length")
+        with open(tmp, "wb") as out:
+            shutil.copyfileobj(r, out)
+    got = tmp.stat().st_size
+    if declared is not None and got != int(declared):
+        raise OSError(f"truncated: got {got} bytes, expected {int(declared)}")
+    if got == 0:
+        raise OSError("empty response")
+
+
 def fetch(cache: Path) -> None:
     """Download any source file not already cached."""
     cache.mkdir(parents=True, exist_ok=True)
@@ -79,8 +99,24 @@ def fetch(cache: Path) -> None:
             continue
         log(f"  fetching {name} ...")
         tmp = dest.with_suffix(dest.suffix + ".part")
-        with urllib.request.urlopen(url) as r, open(tmp, "wb") as out:
-            shutil.copyfileobj(r, out)
+        # A connection cut mid-transfer ends cleanly as far as Python is
+        # concerned, so an incomplete file used to be renamed into place and
+        # then treated as cached forever -- every later build failed in
+        # gzip.open with EOFError and nothing suggested clearing the cache.
+        # The file is only renamed once its length matches.
+        for attempt in range(1, ATTEMPTS + 1):
+            try:
+                _download(url, tmp)
+                break
+            except OSError as exc:      # URLError subclasses OSError
+                tmp.unlink(missing_ok=True)
+                if attempt == ATTEMPTS:
+                    raise SystemExit(
+                        f"ERROR: could not download {name} after {ATTEMPTS} "
+                        f"attempts: {exc}\n"
+                        f"       {url}\n"
+                        f"       Nothing was cached, so re-running is safe.")
+                log(f"           attempt {attempt} failed ({exc}); retrying")
         tmp.rename(dest)
         log(f"           {dest.stat().st_size / 1e6:.1f} MB")
 
@@ -250,7 +286,11 @@ def main() -> int:
         writing = False
         for line in fin:
             if line.startswith(">"):
-                writing = line[1:].split()[0] in kept
+                # A header with nothing after ">" makes split()[0] an
+                # IndexError, ten minutes into a build. It is not our file to
+                # validate, so skip the record rather than abort.
+                fields = line[1:].split()
+                writing = bool(fields) and fields[0] in kept
                 if writing:
                     n_written += 1
             if writing:
@@ -266,25 +306,49 @@ def main() -> int:
     log("[6/6] Running emu build-database (this shells out to minimap2)")
     dbname = "ncbi_16s"
     target = outdir / dbname
-    if target.exists():
-        shutil.rmtree(target)
+
+    # Build beside the existing database, not on top of it. `nano16s db build`
+    # names the directory after the current month, so re-running in the same
+    # month used to delete a working database and then rebuild it -- and an
+    # Emu failure, a dropped connection or a Ctrl-C in the minutes that
+    # followed left the user with neither. The old one is only replaced once
+    # the new one is complete.
+    staging = outdir / f"{dbname}.incoming"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
 
     proc = subprocess.run(
         ["emu", "build-database", dbname,
          "--sequences", str(filtered),
          "--seq2tax", str(seq2tax_file),
          "--ncbi-taxonomy", str(taxonomy)],
-        cwd=outdir,
+        cwd=staging,
     )
     if proc.returncode != 0:
-        print("ERROR: emu build-database failed.", file=sys.stderr)
+        shutil.rmtree(staging, ignore_errors=True)
+        print("ERROR: emu build-database failed. The existing database, if "
+              "there was one, is untouched.", file=sys.stderr)
         return 1
+
+    built = staging / dbname
+    if not (built / "species_taxid.fasta").exists() \
+            or not (built / "taxonomy.tsv").exists():
+        shutil.rmtree(staging, ignore_errors=True)
+        print(f"ERROR: expected outputs missing under {built}. The existing "
+              f"database, if there was one, is untouched.", file=sys.stderr)
+        return 1
+
+    previous = outdir / f"{dbname}.previous"
+    shutil.rmtree(previous, ignore_errors=True)
+    if target.exists():
+        target.rename(previous)
+    built.rename(target)
+    shutil.rmtree(staging, ignore_errors=True)
+    shutil.rmtree(previous, ignore_errors=True)
 
     fasta = target / "species_taxid.fasta"
     taxtsv = target / "taxonomy.tsv"
-    if not fasta.exists() or not taxtsv.exists():
-        print(f"ERROR: expected outputs missing under {target}", file=sys.stderr)
-        return 1
 
     with open(fasta, encoding="utf-8") as fh:
         n_db = sum(1 for line in fh if line.startswith(">"))
