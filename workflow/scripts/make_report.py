@@ -120,7 +120,18 @@ def read_abundance(path, rank):
             # that actually contain something.
             if numeric or not saw_value:
                 sample_idx.append(i)
-        samples = [_clean_sample(header[i]) for i in sample_idx]
+
+        # Sorted, because Emu's column order is whatever its input directory
+        # listing happened to be. Two runs of the same data produced tables in
+        # different orders, and within one report the funnel chart -- which
+        # reads preprocessing_summary.csv, already sorted -- listed barcodes
+        # top to bottom while the composition charts directly below it did not.
+        # Reading the two charts row by row compared different samples.
+        # Lexicographic matches the sort in common.smk, since ONT pads barcode
+        # numbers to a fixed width.
+        pairs = sorted((_clean_sample(header[i]), i) for i in sample_idx)
+        samples = [s for s, _ in pairs]
+        sample_idx = [i for _, i in pairs]
 
         table: dict[str, dict[str, float]] = {}
         for row in rows:
@@ -425,8 +436,15 @@ def main():
     if manifest.exists():
         try:
             m = json.loads(manifest.read_text())
-            db_desc = (f"{db_path.parent.name} — {m.get('sequences', '?'):,} sequences, "
-                       f"{m.get('taxa', '?'):,} taxa, built {m.get('built', '?')}")
+            # fnum, not `{...:,}` directly: the ',' format spec raises on a
+            # string, so a manifest missing one key lost the whole description
+            # to the except below and the Methods section fell back to a bare
+            # directory name.
+            def fnum(key):
+                v = m.get(key)
+                return f"{v:,}" if isinstance(v, (int, float)) else "?"
+            db_desc = (f"{db_path.parent.name} — {fnum('sequences')} sequences, "
+                       f"{fnum('taxa')} taxa, built {m.get('built', '?')}")
         except Exception:
             pass
 

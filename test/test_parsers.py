@@ -61,6 +61,26 @@ def test_lineage_columns_are_not_mistaken_for_samples(tmp_path):
     assert table["Aeromonas veronii"]["barcode01"] == pytest.approx(0.6)
 
 
+def test_barcodes_are_ordered_the_same_way_every_run(tmp_path):
+    """REGRESSION: Emu's column order is its input directory listing.
+
+    Two runs of the same data produced tables in different orders, and the
+    report drew its funnel chart from preprocessing_summary.csv (sorted) and
+    its composition charts from this header (not), so the two charts on one
+    page listed barcodes differently and could not be read against each other.
+    """
+    f = write(tmp_path / "s.tsv", [
+        ["tax_id", "species", "barcode06", "barcode03", "barcode01"],
+        [1, "Escherichia coli", 0.5, 0.2, 0.3],
+    ])
+    samples, table = read_abundance(f, "species")
+    assert samples == ["barcode01", "barcode03", "barcode06"]
+    # Re-ordering the names must carry their columns with them.
+    assert table["Escherichia coli"]["barcode01"] == pytest.approx(0.3)
+    assert table["Escherichia coli"]["barcode03"] == pytest.approx(0.2)
+    assert table["Escherichia coli"]["barcode06"] == pytest.approx(0.5)
+
+
 def test_a_barcode_named_like_a_rank_is_still_excluded_by_name(tmp_path):
     """The lineage filter is by name, so a barcode literally called "class"
     would be dropped. Documented limitation — asserted so a future change to
