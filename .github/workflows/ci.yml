@@ -309,7 +309,12 @@ jobs:
           # Six per-sample rules record one benchmark each per barcode. Zero
           # here means the timings behind the performance report were never
           # written, which leaves the report rendering but hollow.
-          N_BENCH="$(find "$RUN_DIR/benchmarks" -name '*.tsv' 2>/dev/null | wc -l)"
+          # `|| N_BENCH=0`, because pipefail again: with no benchmarks/ at all
+          # `find` exits 1, the substitution fails, and the step dies before
+          # printing the count -- failing for the right reason but saying
+          # nothing about which check it was.
+          N_BENCH="$(find "$RUN_DIR/benchmarks" -name '*.tsv' 2>/dev/null | wc -l)" \
+            || N_BENCH=0
           echo "  benchmark records: $N_BENCH"
           [ "$N_BENCH" -gt 0 ] || MISSING=1
           exit "$MISSING"
