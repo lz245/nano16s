@@ -25,6 +25,11 @@ report, so a result can always be traced to the database that produced it.
   real reason. A run whose length window does not match the amplicon puts
   every barcode into this state, so it doubled the flags exactly when the
   report most needed to be readable.
+- On macOS, a system version file that will not open no longer takes the whole
+  performance report down. Reading the OS name goes through
+  `platform.mac_ver()`, which parses a plist under `/System/Library`; every
+  other hardware lookup in the report already tolerated its source being
+  unreadable, and this one did not.
 
 ## [1.1.0] — 2026-08-11
 

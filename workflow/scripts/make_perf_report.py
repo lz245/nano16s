@@ -154,7 +154,14 @@ def _os_name():
             pass
         return "Linux"
     if platform.system() == "Darwin":
-        return f"macOS {platform.mac_ver()[0]}".strip()
+        # platform.mac_ver() looks like a pure lookup but reads and parses
+        # /System/Library/CoreServices/SystemVersion.plist. The Linux branch
+        # above guards its file read; this one has to as well, or an
+        # unreadable plist takes the whole report down over the OS name.
+        try:
+            return f"macOS {platform.mac_ver()[0]}".strip()
+        except (OSError, ValueError):
+            return "macOS"
     return f"{platform.system()} {platform.release()}".strip()
 
 
