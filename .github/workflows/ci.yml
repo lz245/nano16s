@@ -275,8 +275,23 @@ jobs:
       # performance report stayed missing from every artifact since it was
       # added. Assert the list here, where each name is checked on its own.
       - name: Every file the artifact promises exists
+        # Plain bash, not the job's `bash -el`. A *login* shell sources
+        # ~/.bash_logout on the way out, and Ubuntu's runs `clear_console -q`,
+        # which fails with no terminal attached and takes the shell's exit
+        # status with it -- so `exit 0` leaves the step reporting 1. The check
+        # below found all five files and 36 benchmark records and still failed
+        # the job. Nothing here needs conda, so the login shell buys nothing.
+        shell: bash
         run: |
-          RUN_DIR="$(ls -d "${{ runner.temp }}"/demo/nano16s_test_* | head -1)"
+          # A glob rather than `ls | head`: `shell: bash` adds pipefail, under
+          # which a pipe whose left side is cut short by `head` fails the step.
+          shopt -s nullglob
+          DIRS=("${{ runner.temp }}"/demo/nano16s_test_*/)
+          if [ "${#DIRS[@]}" -eq 0 ]; then
+            echo "no run directory under ${{ runner.temp }}/demo -- TMPDIR was not honoured"
+            exit 1
+          fi
+          RUN_DIR="${DIRS[0]%/}"
           echo "run directory: $RUN_DIR"
           MISSING=0
           for f in nano16s_report.html \
@@ -294,7 +309,12 @@ jobs:
           # Six per-sample rules record one benchmark each per barcode. Zero
           # here means the timings behind the performance report were never
           # written, which leaves the report rendering but hollow.
-          N_BENCH="$(find "$RUN_DIR/benchmarks" -name '*.tsv' 2>/dev/null | wc -l)"
+          # `|| N_BENCH=0`, because pipefail again: with no benchmarks/ at all
+          # `find` exits 1, the substitution fails, and the step dies before
+          # printing the count -- failing for the right reason but saying
+          # nothing about which check it was.
+          N_BENCH="$(find "$RUN_DIR/benchmarks" -name '*.tsv' 2>/dev/null | wc -l)" \
+            || N_BENCH=0
           echo "  benchmark records: $N_BENCH"
           [ "$N_BENCH" -gt 0 ] || MISSING=1
           exit "$MISSING"
