@@ -326,6 +326,27 @@ def test_system_info_survives_a_machine_with_no_proc(monkeypatch):
     assert info["python"]
 
 
+def test_a_mac_whose_version_plist_will_not_open(monkeypatch):
+    """The same promise as the test above, on the branch only macOS reaches.
+
+    That test passed on Linux and failed on every macOS runner: with `open`
+    stubbed out it reached platform.mac_ver(), which reads
+    /System/Library/CoreServices/SystemVersion.plist, and the OSError went
+    straight through _os_name() and out of system_info(). Forcing the branch
+    here means the guard is checked wherever the tests run, not only on a Mac.
+    """
+    def boom():
+        raise OSError("plist unreadable")
+
+    monkeypatch.setattr(make_perf_report.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(make_perf_report.platform, "mac_ver", boom)
+
+    assert make_perf_report._os_name() == "macOS"
+    info = system_info()
+    assert info["os"] == "macOS"
+    assert info["wsl"] is False
+
+
 def test_wsl_is_reported_as_both_windows_and_linux(monkeypatch):
     """"Win or Linux" has a third answer, and it is the one in use here."""
     monkeypatch.setattr(make_perf_report, "_is_wsl", lambda: True)
