@@ -49,6 +49,19 @@ PY
             exit 0
         fi
 
+        # Clear results from any earlier attempt before Emu runs, so whatever
+        # is here afterwards is unambiguously this job's own output.
+        #
+        # Emu names its file after the input, giving
+        # barcodeNN_filtered.fastq_rel-abundance.tsv, which the rename below
+        # turns into the declared name. An attempt interrupted between those
+        # two steps left Emu's name behind -- and the rule does not re-run once
+        # its declared output exists, so the stray survived every later run.
+        # emu_combine then read it as an extra sample: 32 columns in a
+        # 24-barcode table, each duplicate a complete second abundance profile
+        # that disagreed with the real one, with nothing to say so.
+        rm -f {params.outdir}/*_rel-abundance*.tsv {params.outdir}/*_counts*.tsv
+
         emu abundance \
             {input} \
             --db {params.db} \
@@ -56,19 +69,25 @@ PY
             --output-dir {params.outdir} \
             --threads {threads}
 
-        # Emu names output with a hash — rename to predictable name
-        RESULT=$(ls {params.outdir}/*_rel-abundance*.tsv 2>/dev/null | head -1)
-        if [ -z "$RESULT" ]; then
+        # A glob into an array, not `ls ... | head -1`. Snakemake runs shell
+        # bodies under `set -euo pipefail`, so `ls` finding nothing exits 2, the
+        # substitution fails, and the rule dies at the assignment -- before the
+        # message below can explain why. That message has never been reachable.
+        shopt -s nullglob
+        REL=( {params.outdir}/*_rel-abundance*.tsv )
+        if [ "${{#REL[@]}}" -eq 0 ]; then
             echo "ERROR: Emu produced no output for {wildcards.sample}" >&2
+            echo "  Expected a *_rel-abundance.tsv under {params.outdir}" >&2
             exit 1
         fi
-        if [ "$RESULT" != "{output}" ]; then
-            mv "$RESULT" {output}
+        if [ "${{REL[0]}}" != "{output}" ]; then
+            mv -f "${{REL[0]}}" {output}
         fi
 
-        COUNT_RESULT=$(find {params.outdir} -maxdepth 1 -type f -name '*_counts*.tsv' -size +0c | head -n 1)
-        if [ -n "$COUNT_RESULT" ] && [ "$COUNT_RESULT" != "{params.outdir}/{wildcards.sample}_counts.tsv" ]; then
-            mv "$COUNT_RESULT" {params.outdir}/{wildcards.sample}_counts.tsv
+        CNT=( {params.outdir}/*_counts*.tsv )
+        if [ "${{#CNT[@]}}" -gt 0 ] \
+           && [ "${{CNT[0]}}" != "{params.outdir}/{wildcards.sample}_counts.tsv" ]; then
+            mv -f "${{CNT[0]}}" {params.outdir}/{wildcards.sample}_counts.tsv
         fi
         """
 
@@ -96,15 +115,24 @@ rule emu_combine:
         rm -rf "$COMBINE_INPUT"
         mkdir -p "$COMBINE_INPUT"
 
-        # Emu combine-outputs expects per-sample TSVs in the emu_dir root.
-        # Create symlinks from per-barcode subdirs for both abundance and counts.
-        for TSV in {params.emu_dir}/*/*_rel-abundance*.tsv {params.emu_dir}/*/*_counts*.tsv; do
+        # Emu combine-outputs expects per-sample TSVs in one directory, so link
+        # them in from the per-barcode subdirectories.
+        #
+        # The rule's declared inputs, not a wildcard glob. `*/*_rel-abundance*`
+        # matched anything that happened to be sitting in a barcode directory,
+        # and every match became a column in the combined table. These paths are
+        # exactly one per barcode, by construction, so a stray file can no
+        # longer become a sample.
+        REL_COUNT=0
+        for TSV in {input}; do
             [ -s "$TSV" ] || continue
-            BASENAME=$(basename "$TSV")
-            ln -sf "$TSV" "$COMBINE_INPUT/$BASENAME"
+            ln -sf "$TSV" "$COMBINE_INPUT/$(basename "$TSV")"
+            REL_COUNT=$(( REL_COUNT + 1 ))
+            CNT="$(dirname "$TSV")/$(basename "$TSV" _rel-abundance.tsv)_counts.tsv"
+            if [ -s "$CNT" ]; then
+                ln -sf "$CNT" "$COMBINE_INPUT/$(basename "$CNT")"
+            fi
         done
-
-        REL_COUNT=$(find "$COMBINE_INPUT" -maxdepth 1 -type l -name '*_rel-abundance*.tsv' | wc -l | tr -d ' ')
 
         if [ "$REL_COUNT" -eq 0 ]; then
             echo "# no non-empty Emu rel-abundance files available for {wildcards.rank}" > {output.rel}
