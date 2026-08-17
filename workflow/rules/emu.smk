@@ -69,12 +69,26 @@ PY
             --output-dir {params.outdir} \
             --threads {threads}
 
-        # A glob into an array, not `ls ... | head -1`. Snakemake runs shell
+        # `*_rel-abundance.tsv`, matching the full table exactly, NOT
+        # `*_rel-abundance*.tsv`.
+        #
+        # Emu always writes <input>_rel-abundance.tsv, and additionally writes
+        # <input>_rel-abundance-threshold-<min-abundance>.tsv whenever any taxon
+        # falls below --min-abundance (default 0.0001). The wildcard matched
+        # both, and "-threshold-" sorts before ".tsv", so the *thresholded*
+        # table was the one promoted to the declared output while the full
+        # result was left behind. A barcode with any taxon under 0.01% shipped a
+        # thresholded, re-normalised table -- 160 taxa instead of 165, with
+        # every abundance shifted -- while its neighbours shipped full ones. The
+        # barcodes within a single run were therefore not comparable, and
+        # nothing said so.
+        #
+        # A glob into an array, not `ls ... | head -1`: Snakemake runs shell
         # bodies under `set -euo pipefail`, so `ls` finding nothing exits 2, the
         # substitution fails, and the rule dies at the assignment -- before the
         # message below can explain why. That message has never been reachable.
         shopt -s nullglob
-        REL=( {params.outdir}/*_rel-abundance*.tsv )
+        REL=( {params.outdir}/*_rel-abundance.tsv )
         if [ "${{#REL[@]}}" -eq 0 ]; then
             echo "ERROR: Emu produced no output for {wildcards.sample}" >&2
             echo "  Expected a *_rel-abundance.tsv under {params.outdir}" >&2
@@ -83,6 +97,15 @@ PY
         if [ "${{REL[0]}}" != "{output}" ]; then
             mv -f "${{REL[0]}}" {output}
         fi
+
+        # Emu's thresholded table is a legitimate secondary output, so keep it
+        # -- but under a predictable name, so it reads as what it is and cannot
+        # be mistaken for the result again.
+        THRESH=( {params.outdir}/*_rel-abundance-threshold-*.tsv )
+        for t in "${{THRESH[@]}}"; do
+            keep="{params.outdir}/{wildcards.sample}_rel-abundance-threshold-${{t##*-threshold-}}"
+            [ "$t" = "$keep" ] || mv -f "$t" "$keep"
+        done
 
         CNT=( {params.outdir}/*_counts*.tsv )
         if [ "${{#CNT[@]}}" -gt 0 ] \
