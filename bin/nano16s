@@ -230,6 +230,18 @@ done
 [[ -n "$INPUT_DIR" ]] || die "-d/--input-dir is required. Run 'nano16s --help'."
 [[ -d "$INPUT_DIR" ]] || die "input directory not found: $INPUT_DIR"
 
+# Checked here rather than left to surface as a Chopper or Snakemake error
+# partway through a run that has already spent minutes on Porechop.
+need_int() { [[ "$2" =~ ^[0-9]+$ ]] || die "$1 needs a whole number, got: $2"; }
+need_int --min-length  "$MIN_LENGTH"
+need_int --max-length  "$MAX_LENGTH"
+need_int --min-quality "$MIN_QUALITY"
+[[ -z "$CORES" ]] || need_int -c/--cores "$CORES"
+(( MIN_LENGTH < MAX_LENGTH )) || \
+    die "--min-length ($MIN_LENGTH) must be below --max-length ($MAX_LENGTH).
+       A window that excludes everything filters every read out, and the run
+       finishes with empty tables rather than an error."
+
 BARCODES="$(find "$INPUT_DIR" -maxdepth 1 -type d -name 'barcode*' | wc -l | tr -d ' ')"
 (( BARCODES > 0 )) || die "no barcode* directories inside $INPUT_DIR
        Point -d at the fastq_pass folder that contains barcode01/, barcode02/, ..."
@@ -251,21 +263,37 @@ mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 
 # --- preflight -----------------------------------------------------------------
-INPUT_MB="$(du -sm "$INPUT_DIR" 2>/dev/null | cut -f1)"
+# `|| INPUT_MB=""`, and the same for df below. The script runs under
+# `set -euo pipefail`, so a du that cannot read one subdirectory of the input
+# exits 1, the pipeline fails, and the whole command dies -- with 2>/dev/null
+# hiding the reason and nothing else printed. `nano16s -d ...` exited 1 with no
+# output at all whenever a barcode directory was not readable, which on a
+# shared machine is an ordinary Monday. The disk estimate is a convenience; it
+# must never be able to stop a run.
+INPUT_MB="$(du -sm "$INPUT_DIR" 2>/dev/null | cut -f1)" || INPUT_MB=""
+FREE_MB="$(df -m "$OUTPUT_DIR" 2>/dev/null | tail -1 | awk '{print $4}')" || FREE_MB=""
+[[ "$INPUT_MB" =~ ^[0-9]+$ ]] || INPUT_MB=""
+[[ "$FREE_MB"  =~ ^[0-9]+$ ]] || FREE_MB=""
+
 # Intermediates roughly triple the input before the final tables are written.
-NEED_MB=$(( INPUT_MB * 3 ))
-FREE_MB="$(df -m "$OUTPUT_DIR" | tail -1 | awk '{print $4}')"
+if [[ -n "$INPUT_MB" ]]; then
+    NEED_MB=$(( INPUT_MB * 3 ))
+    SIZE_NOTE="${INPUT_MB} MB"
+else
+    NEED_MB=0
+    SIZE_NOTE="size unknown"
+fi
 
 cat <<EOF
 nano16s $VERSION
-  input       $INPUT_DIR ($BARCODES barcodes, ${INPUT_MB} MB)
+  input       $INPUT_DIR ($BARCODES barcodes, ${SIZE_NOTE})
   output      $OUTPUT_DIR
   database    $DB
   filtering   Q>=$MIN_QUALITY, ${MIN_LENGTH}-${MAX_LENGTH} bp
   cores       $CORES
 EOF
 
-if (( NEED_MB > FREE_MB )); then
+if [[ -n "$FREE_MB" ]] && (( NEED_MB > FREE_MB )); then
     echo ""
     echo "  WARNING: this run needs roughly ${NEED_MB} MB but only ${FREE_MB} MB is free."
     echo "           Intermediates in 01_merged/ and 03_trimmed/ are the bulk of it;"
