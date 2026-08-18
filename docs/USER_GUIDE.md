@@ -663,7 +663,41 @@ safe to email or attach to a manuscript.
 
 ## 12. Read the results report
 
-Open `nano16s_report.html`.
+### Opening it
+
+The report is one self-contained HTML file — no internet connection, no
+external files, safe to email. Open it the way you would open any web page:
+
+| Where you are | Command |
+|---|---|
+| Linux desktop | `xdg-open nano16s_report.html` |
+| macOS | `open nano16s_report.html` |
+| Windows, via WSL | `explorer.exe nano16s_report.html` |
+| No desktop (SSH, server) | copy it to your own machine first — see below |
+
+On Ubuntu, `open` is an alias for `xdg-open`, so both work there.
+
+You can also double-click the file in your file manager. From WSL, the reports
+appear under `\\wsl.localhost\Ubuntu\home\<you>\...` in Windows Explorer.
+
+Over SSH there is no desktop for the server to open a window on, so bring the
+file to you:
+
+```bash
+scp you@server:/path/to/my_results/nano16s_report.html .
+```
+
+**`nano16s test` writes to a temporary directory** — `/tmp/nano16s_test_XXXXXX`,
+printed at the end of the run. `/tmp` is cleared on reboot, so copy anything you
+want to keep:
+
+```bash
+cp /tmp/nano16s_test_*/nano16s_report.html ~/
+```
+
+Real runs go wherever you point `-o`, so they are not affected.
+
+### What is in it
 
 **Read funnel.** Reads per barcode before and after filtering. What you want is
 consistency: barcodes retaining broadly similar proportions. One barcode
@@ -894,6 +928,31 @@ barcode.
 
 **The run is using less of my CPU than expected**
 See the Machine use section of the performance report, and section 13.
+
+**`Gtk-Message: Not loading module "atk-bridge"` when opening a report**
+
+Not an error, and nothing to install. `Gtk-Message:` is informational, and the
+browser prints it *after* it has already started — the report has almost
+certainly opened, possibly behind the terminal window or on another workspace.
+
+There is no `atk-bridge` package, so `sudo apt install atk-bridge` cannot work.
+(`install` on its own is a file-copying command, which is why
+`sudo install atk-bridge` answers `missing destination file operand`.)
+
+If no window appeared at all, the file is fine — the question is which
+application your desktop chose for it:
+
+```bash
+xdg-mime query default text/html     # what is registered to open it
+xdg-open nano16s_report.html         # try again
+firefox nano16s_report.html          # or name a browser directly
+```
+
+If the first command prints nothing, no application is registered for HTML —
+naming a browser directly, as in the third line, is the fix.
+
+Over SSH there is no desktop to open anything on; copy the file to your own
+machine instead (section 12).
 
 ### On WSL2
 
