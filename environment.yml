@@ -1,4 +1,4 @@
-# nano16s-local — runtime environment
+# nano16s — runtime environment
 #
 # Create with:
 #   conda env create -f environment.yml     (or: mamba env create -f environment.yml)

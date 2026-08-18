@@ -1,5 +1,5 @@
 # nano16s
-[![CI](https://github.com/lz245/nano16s-local/actions/workflows/ci.yml/badge.svg)](https://github.com/lz245/nano16s-local/actions/workflows/ci.yml)
+[![CI](https://github.com/lz245/nano16s/actions/workflows/ci.yml/badge.svg)](https://github.com/lz245/nano16s/actions/workflows/ci.yml)
 Taxonomic profiling of Oxford Nanopore full-length 16S rRNA amplicon data, on
 an ordinary computer.
 
@@ -64,8 +64,8 @@ an Intel Mac, `nano16s test` after installing is worth the five minutes.
 ## Install
 
 ```bash
-git clone https://github.com/lz245/nano16s-local.git
-cd nano16s-local
+git clone https://github.com/lz245/nano16s.git
+cd nano16s
 bash install.sh
 conda activate nano16s
 ```

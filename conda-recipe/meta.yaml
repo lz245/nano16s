@@ -7,7 +7,7 @@ package:
 
 source:
   # For a bioconda submission this becomes the release tarball plus its sha256:
-  #   url: https://github.com/lz245/nano16s-local/archive/refs/tags/v{{ version }}.tar.gz
+  #   url: https://github.com/lz245/nano16s/archive/refs/tags/v{{ version }}.tar.gz
   #   sha256: <of the tarball>
   # Kept as a local path so the recipe can be built and tested before a release
   # is tagged.
@@ -50,7 +50,7 @@ test:
     # a ~110 MB download and deliberately not part of the package.
 
 about:
-  home: https://github.com/lz245/nano16s-local
+  home: https://github.com/lz245/nano16s
   license: MIT
   license_file: LICENSE
   summary: Taxonomic profiling of Oxford Nanopore full-length 16S rRNA amplicon data
@@ -63,7 +63,7 @@ about:
     NCBI 16S RefSeq Targeted Loci collection. The database is downloaded and
     built by `nano16s db build` after installation rather than shipped in the
     package, since it is refreshed on NCBI's schedule rather than the tool's.
-  doc_url: https://github.com/lz245/nano16s-local#readme
+  doc_url: https://github.com/lz245/nano16s#readme
 
 extra:
   recipe-maintainers:

@@ -1,5 +1,5 @@
 # =============================================================================
-# nano16s-local — configuration
+# nano16s — configuration
 # =============================================================================
 # Every value here can be overridden on the command line:
 #   nano16s -d ./fastq_pass --min-quality 12
