@@ -18,6 +18,12 @@ a placeholder — substitute your own run directory wherever you see
 1. [What nano16s does](#1-what-nano16s-does)
 2. [What you need](#2-what-you-need)
 3. [Set up your computer](#3-set-up-your-computer)
+    - [A word on the terminal](#a-word-on-the-terminal)
+    - [Windows](#windows)
+    - [macOS](#macos)
+    - [Linux](#linux)
+    - [Install Miniforge (all platforms)](#install-miniforge-all-platforms)
+    - [Check you are ready](#check-you-are-ready)
 4. [Install nano16s](#4-install-nano16s)
 5. [Build the reference database](#5-build-the-reference-database)
 6. [Verify the install](#6-verify-the-install)
@@ -30,14 +36,25 @@ a placeholder — substitute your own run directory wherever you see
 13. [Read the performance report](#13-read-the-performance-report)
 14. [Quality control: what gets flagged](#14-quality-control-what-gets-flagged)
 15. [Use the tables downstream](#15-use-the-tables-downstream)
+    - [R](#r)
+    - [Python](#python)
+    - [phyloseq](#phyloseq)
+    - [Excel](#excel)
 16. [Interpreting 16S results](#16-interpreting-16s-results)
 17. [Re-running and changing settings](#17-re-running-and-changing-settings)
 18. [Processing several runs](#18-processing-several-runs)
 19. [Troubleshooting](#19-troubleshooting)
 20. [Reference](#20-reference)
+    - [Command line](#command-line)
+    - [Paths](#paths)
+    - [Tuning per-rule resources](#tuning-per-rule-resources)
+    - [Citing](#citing)
 
 **Never used a terminal before?** Start at section 3 and follow it in order.
 It assumes nothing is installed.
+
+**Something went wrong?** Section 19 lists every error message this pipeline
+produces, with its cause and its fix.
 
 ---
 
@@ -101,7 +118,7 @@ know before that is worth doing.
 | **Operating system** | Windows 10/11, macOS (Intel or Apple Silicon), or Linux |
 | **RAM** | 8 GB minimum, 16 GB or more comfortable |
 | **CPU** | any; more cores means proportionally faster runs |
-| **Disk** | about 3× your data, plus ~1 GB software and ~150 MB database |
+| **Disk** | about 2–3× your data, plus ~2 GB for the software and ~150 MB for the database and its download cache |
 | **Internet** | needed for setup and once to build the database; runs are offline |
 
 On Windows everything runs inside WSL2, which is a real Linux environment
@@ -616,8 +633,11 @@ tail -f my_run.log        # watch progress; Ctrl-C stops watching, not the run
 
 ### How much disk
 
-About 3× your input. nano16s checks free space before starting and warns you if
-it looks tight. Afterwards you can reclaim most of it:
+Between 2× and 3× your input — 2.0× to 2.3× across the five demo runs. nano16s
+budgets the higher figure, checks free space before starting, and warns you if
+it looks tight.
+
+Afterwards you can reclaim most of it:
 
 ```bash
 rm -rf my_results/01_merged my_results/03_trimmed
@@ -625,6 +645,9 @@ rm -rf my_results/01_merged my_results/03_trimmed
 
 Keep `04_filtered/` if you might re-run the classification step against a newer
 database; it is the input to Emu.
+
+The database build also leaves its NCBI downloads in `~/.nano16s/cache`, about
+100 MB. It is only needed if you rebuild, so it is safe to delete.
 
 ### How much memory
 
@@ -1090,6 +1113,7 @@ Subcommands: `nano16s db build`, `nano16s db list`, `nano16s test`,
 | Path | What |
 |---|---|
 | `~/.nano16s/db/<version>/` | reference databases |
+| `~/.nano16s/cache/` | NCBI downloads kept for rebuilding, ~100 MB, safe to delete |
 | `config/config.yaml` | defaults, including per-rule CPU and memory |
 | `<output>/benchmarks/` | per-job timing and memory records |
 
