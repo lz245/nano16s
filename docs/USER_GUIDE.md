@@ -385,6 +385,52 @@ Do this after installing, and again after any change to your conda environment.
 It is much easier to debug a broken install on demo data than three hours into a
 real run.
 
+### Trying it on a full sequencing run
+
+The bundled demo is deliberately tiny — six barcodes, enough to prove the
+install works. If you want to see what nano16s does with a real run before you
+commit your own data, the five runs it was developed against are published:
+
+**<https://doi.org/10.5281/zenodo.21998286>**
+
+| Dataset | Barcodes | Download | Unpacked |
+|---|---:|---:|---:|
+| `Flongle_Demo01` | 24 | 416 MB | 401 MB |
+| `Flongle_Demo02` | 16 | 1.0 GB | 973 MB |
+| `Flongle_Demo03` | 24 | 708 MB | 682 MB |
+| `MinION_Demo01` | 24 | 4.6 GB | 4.3 GB |
+| `PromethION_Demo01` | 24 | 5.2 GB | 4.9 GB |
+
+Each archive unpacks to a single directory holding a `fastq_pass/` folder with
+one `barcode*` subdirectory per sample, exactly as MinKNOW writes it, plus that
+run's original MinKNOW report — so it doubles as a worked example of the layout
+section 7 describes. `fastq_fail` and `unclassified` reads are not included.
+
+Start with `Flongle_Demo01`: it is the smallest, and takes about 45 minutes on
+a 20-core machine — see the table in section 9 for the others.
+
+```bash
+mkdir -p ~/data && cd ~/data
+curl -L -O https://zenodo.org/records/21998287/files/Flongle_Demo01.zip
+unzip Flongle_Demo01.zip
+
+nano16s -d ~/data/Flongle_Demo01/fastq_pass -o ~/nano16s_out/Flongle_Demo01
+```
+
+Leave room for the download, the unpacked reads, and roughly 3× the unpacked
+size for the run itself — so about 2 GB all told for `Flongle_Demo01`, and
+around 25 GB for `PromethION_Demo01`. The whole set is about 12 GB downloaded.
+
+`CHECKSUMS.txt` in the record lets you confirm a download arrived intact:
+
+```bash
+curl -L -O https://zenodo.org/records/21998287/files/CHECKSUMS.txt
+sha256sum -c CHECKSUMS.txt --ignore-missing
+```
+
+The DOI always resolves to the current version. The data is licensed CC BY 4.0
+— cite it if you use it in your own work (see section 20).
+
 ---
 
 ## 7. Prepare your data
@@ -546,13 +592,13 @@ nano16s -d /path/to/your_run/fastq_pass -c 4
 Runtime scales with the number of reads, not the number of barcodes. As
 measured on a 20-core workstation:
 
-| Reads in the run | Barcodes | Elapsed |
-|---|---|---|
-| ~200,000 | 24 | ~45 min |
-| ~340,000 | 24 | ~75 min |
-| ~510,000 | 16 | ~85 min |
-| ~2,300,000 | 24 | ~4h 20m |
-| ~3,200,000 | 24 | ~8h 25m |
+| Reads in the run | Barcodes | Elapsed | Dataset (section 6) |
+|---|---|---|---|
+| ~200,000 | 24 | ~45 min | `Flongle_Demo01` |
+| ~340,000 | 24 | ~75 min | `Flongle_Demo03` |
+| ~510,000 | 16 | ~85 min | `Flongle_Demo02` |
+| ~2,300,000 | 24 | ~4h 20m | `MinION_Demo01` |
+| ~3,200,000 | 24 | ~8h 25m | `PromethION_Demo01` |
 
 Treat these as a rough guide — a machine with a quarter of the cores takes
 substantially longer. Two stages dominate: **Porechop**, which infers adapter
@@ -995,3 +1041,9 @@ Cite the underlying tools, which do the actual work:
 
 See [CITATION.cff](../CITATION.cff) for nano16s itself, and record the database
 version from your report.
+
+If you use the demo datasets from section 6, cite them as well:
+
+- Zhang, L. & Adapa, P. D. *nano16s demo datasets: Oxford Nanopore full-length
+  16S rRNA amplicon sequencing runs (Flongle, MinION, PromethION)*. Zenodo (2026).
+  <https://doi.org/10.5281/zenodo.21998286>
