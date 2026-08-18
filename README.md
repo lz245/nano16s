@@ -50,8 +50,9 @@ recovers low-abundance organisms a best-hit approach tends to lose.
 
 - macOS (Intel or Apple Silicon) or Linux. Windows works through WSL2.
 - [Miniforge](https://github.com/conda-forge/miniforge#install) or any conda.
-- About 3× your input size in free disk, plus ~1 GB for the software
-  environment and ~150 MB for the reference database. 8 GB RAM.
+- About 2–3× your input size in free disk, plus ~2 GB for the software
+  environment and ~150 MB for the reference database and its download cache.
+  8 GB RAM.
 - Internet once, to build the reference database.
 
 Every tool installs natively — no Rosetta, no emulation, no Docker.
@@ -238,8 +239,11 @@ was incomplete, or `-d` points at the wrong place. If the barcode genuinely
 produced nothing, remove the directory and re-run.
 
 **Porechop is slow** — it is the slowest stage by a wide margin, because it
-infers adapter sequences from your data rather than assuming them. Budget a few
-minutes per barcode.
+infers adapter sequences from your data rather than assuming them. Per barcode,
+measured across the five demo runs: 1–8 minutes on a Flongle, 6–14 on a MinION,
+18–43 on a PromethION. Several barcodes run at once, so the elapsed time is a
+fraction of the total; the performance report gives the real figures for your
+own run.
 
 ## Development
 
