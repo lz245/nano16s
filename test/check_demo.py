@@ -274,6 +274,9 @@ def main() -> int:
     else:
         print(f"{GREEN}Install verified — everything works.{RESET}")
     print(f"\nOpen the report:  {root / 'nano16s_report.html'}")
+    # These land under $HOME so a sandboxed browser can read them, which means
+    # they also persist -- /tmp used to clear itself on reboot. About 25 MB each.
+    print(f"Delete it with:   rm -rf {root}")
     return 0
 
 

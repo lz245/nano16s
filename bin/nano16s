@@ -188,8 +188,17 @@ cmd_db() {
 cmd_test() {
     local demo="$ROOT/test/demo/fastq_pass"
     [[ -d "$demo" ]] || die "bundled demo data not found at $demo"
-    local out
-    out="$(mktemp -d "${TMPDIR:-/tmp}/nano16s_test_XXXXXX")"
+    # Under $HOME, not /tmp. The point of this command is that you read the
+    # report it produces, and on Ubuntu the default Firefox is a snap: a snap
+    # has its own private /tmp, so the browser reports "File not found" for a
+    # report the terminal is listing right there. /tmp is also cleared on
+    # reboot. Anything under $HOME is readable by a confined browser and
+    # survives. TMPDIR still wins where it is set deliberately, which is what
+    # CI does.
+    local out root
+    root="${TMPDIR:-$HOME}"
+    [[ -d "$root" && -w "$root" ]] || root=/tmp
+    out="$(mktemp -d "$root/nano16s_test_XXXXXX")"
     echo "Running the bundled demo dataset."
     echo "  input:  $demo"
     echo "  output: $out"
