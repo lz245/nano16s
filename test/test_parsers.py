@@ -304,3 +304,22 @@ def test_a_server_that_declares_no_length_is_still_checked_for_emptiness(
                         lambda url, timeout=None: FakeResponse(b"", None))
     with pytest.raises(OSError, match="empty"):
         build_emu_db._download("http://example/f.gz", tmp_path / "f.gz")
+
+
+def test_a_barcode_absent_from_the_abundance_table_is_detected(tmp_path):
+    """REGRESSION: a barcode that loses every read vanishes from the tables.
+
+    Its Emu output is an empty file, which emu_combine skips, so it is missing
+    from 07_emu_combined/ and from the composition charts -- while the funnel
+    chart and the header still count it. Reproduced on the demo: 6 barcodes in
+    preprocessing_summary.csv, 5 columns in emu-combined-species.tsv, exit 0.
+    A script reading the TSV downstream sees five samples and no explanation.
+    """
+    f = write(tmp_path / "s.tsv", [
+        ["tax_id", "species", "barcode01", "barcode02"],
+        [1, "Escherichia coli", 0.6, 0.4],
+    ])
+    samples, _ = read_abundance(f, "species")
+    summary_barcodes = ["barcode01", "barcode02", "barcode03"]
+    absent = [b for b in summary_barcodes if b not in set(samples)]
+    assert absent == ["barcode03"]
