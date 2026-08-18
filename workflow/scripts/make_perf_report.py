@@ -427,9 +427,24 @@ def timeline_svg(jobs, stages):
     if not placed:
         return ("<p class='empty'>No timing data available for the timeline.</p>", "")
 
-    t0 = min(j["start"] for j in placed)
-    t1 = max(j["end"] for j in placed)
-    span = max(t1 - t0, 1.0)
+    # Drawn against working time, not the calendar. A resumed directory holds
+    # benchmark records from several sittings; stretching the axis from the
+    # first to the last put days of nothing down the middle and squeezed every
+    # job to the 1.2px floor -- 144 bars, all identical, none showing its own
+    # duration. Idle gaps are cut out, and where a run stopped is marked.
+    sittings = split_sittings(placed)
+    offsets, acc = [], 0.0
+    for s_start, s_end in sittings:
+        offsets.append((s_start, s_end, acc))
+        acc += s_end - s_start
+    span = max(acc, 1.0)
+
+    def at(t):
+        """Clock time -> position on the compressed axis."""
+        for s_start, s_end, base in offsets:
+            if t <= s_end:
+                return base + max(t - s_start, 0.0)
+        return span
 
     samples = sorted({j["sample"] for j in placed})
     slot = {s: i for i, s in enumerate(stages)}
@@ -455,13 +470,18 @@ def timeline_svg(jobs, stages):
         parts.append(f'<text class="rowlab" x="{pad_l - 10}" y="{y + 11}" '
                      f'text-anchor="end">{esc(sample)}</text>')
         for j in (x for x in placed if x["sample"] == sample):
-            x0 = pad_l + plot_w * ((j["start"] - t0) / span)
+            x0 = pad_l + plot_w * (at(j["start"]) / span)
             w = max(plot_w * (j["wall"] / span), 1.2)
             cls = f"s{slot.get(j['rule'], 0) % len(PALETTE_LIGHT)}"
             parts.append(f'<rect class="seg {cls}" x="{x0:.1f}" y="{y + 2}" '
                          f'width="{w:.1f}" height="{row_h - 4}" rx="2">'
                          f'<title>{esc(sample)} {esc(j["rule"])}: '
                          f'{dur(j["wall"])}</title></rect>')
+    # Mark each join, otherwise the chart reads as one uninterrupted run.
+    for s_start, s_end, base in offsets[:-1]:
+        x = pad_l + plot_w * ((base + (s_end - s_start)) / span)
+        parts.append(f'<line class="grid" x1="{x:.1f}" y1="{pad_t - 6}" '
+                     f'x2="{x:.1f}" y2="{height - 14}" stroke-dasharray="3 3"/>')
     parts.append("</svg>")
 
     legend = ["<div class='legend'>"]

@@ -601,3 +601,28 @@ def test_a_resumed_run_says_so_in_the_report(tmp_path):
     html = run_report(tmp_path, benchmarks=False, bench_dir=str(bench))
     assert "<h2>Timings from more than one run</h2>" in html
     assert "2 separate runs" in html
+
+
+def test_the_timeline_does_not_stretch_across_a_gap_between_runs(tmp_path):
+    """REGRESSION: the chart was drawn against the calendar, not the work.
+
+    A resumed directory holds records from several sittings. Spanning the axis
+    from the earliest to the latest left days of empty chart and squeezed every
+    bar to the 1.2px floor, so all 144 of them rendered identically and none
+    showed its own duration.
+    """
+    bench = tmp_path / "b"
+    a = write_bench(bench, "porechop", "barcode01", 100.0, cpu=200.0)
+    b = write_bench(bench, "emu", "barcode01", 100.0, cpu=300.0)
+    os.utime(a, (1_000_000, 1_000_000))
+    os.utime(b, (1_000_000 + 7 * 24 * 3600, 1_000_000 + 7 * 24 * 3600))
+    jobs = read_benchmarks(str(bench))
+    svg, _ = timeline_svg(jobs, ["porechop", "emu"])
+
+    widths = [float(w) for w in re.findall(r'class="seg[^"]*"[^>]*width="([\d.]+)"', svg)]
+    assert len(widths) == 2
+    # Two 100s jobs over 200s of working time: each fills about half the plot,
+    # not the 1.2px floor it collapsed to when the axis was a week wide.
+    assert min(widths) > 100, f"bars collapsed: {widths}"
+    # And the axis tops out at the working time, not the week.
+    assert "7d" not in svg and "168h" not in svg
