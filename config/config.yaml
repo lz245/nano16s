@@ -55,7 +55,12 @@ resources:
     mem_mb: 8000
     time_min: 240
   chopper:
-    cpus: 4
+    # Measured at 0.86-1.14 cores across all five demo runs, on every flow
+    # cell size. The stage is `gunzip -c | chopper | gzip`, so it is bound by
+    # single-threaded compression, not by chopper's own threading. Reserving
+    # four meant three cores sat idle for the length of every chopper job and
+    # could not start a Porechop or Emu job waiting behind them.
+    cpus: 1
     mem_mb: 2000
     time_min: 60
   emu:
