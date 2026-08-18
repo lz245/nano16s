@@ -26,7 +26,7 @@ import make_perf_report  # noqa: E402
 from make_perf_report import (  # noqa: E402
     MIN_MEDIAN_Q, MIN_READS, MIN_RETENTION_PCT,
     build_rows, dur, ffix, find_flags, fint, parse_nanostat, read_benchmarks,
-    stage_bars_svg, system_info, timeline_svg,
+    split_sittings, stage_bars_svg, system_info, timeline_svg,
 )
 
 BENCH_HEADER = [
@@ -481,13 +481,14 @@ class FakeSnakemake:
         self.output = FakeParams(output)
 
 
-def run_report(tmp_path, *, benchmarks=True):
+def run_report(tmp_path, *, benchmarks=True, bench_dir=None):
     """Generate a complete report and return its HTML.
 
     main() reads nothing from snakemake.input -- that exists only to order
     the DAG -- so a params/output stub drives the whole thing.
     """
-    raw, filt, bench = (tmp_path / "raw", tmp_path / "filt", tmp_path / "bench")
+    raw, filt = tmp_path / "raw", tmp_path / "filt"
+    bench = Path(bench_dir) if bench_dir else tmp_path / "bench"
     for sample in ("barcode01", "barcode02"):
         write_nanostat(raw, sample, 5000)
         write_nanostat(filt, sample, 4800, filtered=True)
@@ -547,3 +548,81 @@ def test_a_run_with_no_benchmarks_explains_itself(tmp_path):
     # And the half that does not depend on timings is still there.
     assert "barcode01" in html
     assert "Per barcode" in html
+
+
+# ---------------------------------------------------------------------------
+# split_sittings
+# ---------------------------------------------------------------------------
+
+def j(start, end):
+    return {"start": float(start), "end": float(end)}
+
+
+def test_one_uninterrupted_run_is_one_sitting():
+    assert split_sittings([j(0, 30), j(10, 50), j(45, 90)]) == [(0.0, 90.0)]
+
+
+def test_overlapping_jobs_do_not_split_a_sitting():
+    """Jobs run concurrently, so a sitting ends only when nothing is running."""
+    assert split_sittings([j(0, 100), j(20, 40), j(60, 80)]) == [(0.0, 100.0)]
+
+
+def test_a_week_long_gap_is_two_sittings():
+    """REGRESSION: a benchmark is only rewritten by a job that runs.
+
+    Resuming a directory leaves the earlier stages' records in place, so the
+    earliest-to-latest span measured the calendar gap between two runs rather
+    than a run. A 39-minute resume of a week-old directory reported 144 hours
+    elapsed and 0.5% core use, with nothing to explain it.
+    """
+    week = 7 * 24 * 3600
+    got = split_sittings([j(0, 600), j(week, week + 120)])
+    assert got == [(0.0, 600.0), (float(week), float(week + 120))]
+    active = sum(e - s for s, e in got)
+    assert active == 720.0                      # not a week
+
+
+def test_a_short_pause_is_not_a_new_sitting():
+    """Snakemake starts the next job as a core frees; seconds are normal."""
+    assert split_sittings([j(0, 100), j(160, 200)]) == [(0.0, 200.0)]
+
+
+def test_no_placed_jobs_is_no_sittings():
+    assert split_sittings([]) == []
+
+
+def test_a_resumed_run_says_so_in_the_report(tmp_path):
+    """The banner must name the situation, not leave the reader to infer it."""
+    bench = tmp_path / "benchmarks"
+    old = write_bench(bench, "porechop", "barcode01", 100.0, cpu=200.0)
+    new = write_bench(bench, "emu", "barcode01", 50.0, cpu=300.0)
+    os.utime(old, (1_000_000, 1_000_000))
+    os.utime(new, (1_000_000 + 7 * 24 * 3600, 1_000_000 + 7 * 24 * 3600))
+    html = run_report(tmp_path, benchmarks=False, bench_dir=str(bench))
+    assert "<h2>Timings from more than one run</h2>" in html
+    assert "2 separate runs" in html
+
+
+def test_the_timeline_does_not_stretch_across_a_gap_between_runs(tmp_path):
+    """REGRESSION: the chart was drawn against the calendar, not the work.
+
+    A resumed directory holds records from several sittings. Spanning the axis
+    from the earliest to the latest left days of empty chart and squeezed every
+    bar to the 1.2px floor, so all 144 of them rendered identically and none
+    showed its own duration.
+    """
+    bench = tmp_path / "b"
+    a = write_bench(bench, "porechop", "barcode01", 100.0, cpu=200.0)
+    b = write_bench(bench, "emu", "barcode01", 100.0, cpu=300.0)
+    os.utime(a, (1_000_000, 1_000_000))
+    os.utime(b, (1_000_000 + 7 * 24 * 3600, 1_000_000 + 7 * 24 * 3600))
+    jobs = read_benchmarks(str(bench))
+    svg, _ = timeline_svg(jobs, ["porechop", "emu"])
+
+    widths = [float(w) for w in re.findall(r'class="seg[^"]*"[^>]*width="([\d.]+)"', svg)]
+    assert len(widths) == 2
+    # Two 100s jobs over 200s of working time: each fills about half the plot,
+    # not the 1.2px floor it collapsed to when the axis was a week wide.
+    assert min(widths) > 100, f"bars collapsed: {widths}"
+    # And the axis tops out at the working time, not the week.
+    assert "7d" not in svg and "168h" not in svg

@@ -427,9 +427,24 @@ def timeline_svg(jobs, stages):
     if not placed:
         return ("<p class='empty'>No timing data available for the timeline.</p>", "")
 
-    t0 = min(j["start"] for j in placed)
-    t1 = max(j["end"] for j in placed)
-    span = max(t1 - t0, 1.0)
+    # Drawn against working time, not the calendar. A resumed directory holds
+    # benchmark records from several sittings; stretching the axis from the
+    # first to the last put days of nothing down the middle and squeezed every
+    # job to the 1.2px floor -- 144 bars, all identical, none showing its own
+    # duration. Idle gaps are cut out, and where a run stopped is marked.
+    sittings = split_sittings(placed)
+    offsets, acc = [], 0.0
+    for s_start, s_end in sittings:
+        offsets.append((s_start, s_end, acc))
+        acc += s_end - s_start
+    span = max(acc, 1.0)
+
+    def at(t):
+        """Clock time -> position on the compressed axis."""
+        for s_start, s_end, base in offsets:
+            if t <= s_end:
+                return base + max(t - s_start, 0.0)
+        return span
 
     samples = sorted({j["sample"] for j in placed})
     slot = {s: i for i, s in enumerate(stages)}
@@ -455,13 +470,18 @@ def timeline_svg(jobs, stages):
         parts.append(f'<text class="rowlab" x="{pad_l - 10}" y="{y + 11}" '
                      f'text-anchor="end">{esc(sample)}</text>')
         for j in (x for x in placed if x["sample"] == sample):
-            x0 = pad_l + plot_w * ((j["start"] - t0) / span)
+            x0 = pad_l + plot_w * (at(j["start"]) / span)
             w = max(plot_w * (j["wall"] / span), 1.2)
             cls = f"s{slot.get(j['rule'], 0) % len(PALETTE_LIGHT)}"
             parts.append(f'<rect class="seg {cls}" x="{x0:.1f}" y="{y + 2}" '
                          f'width="{w:.1f}" height="{row_h - 4}" rx="2">'
                          f'<title>{esc(sample)} {esc(j["rule"])}: '
                          f'{dur(j["wall"])}</title></rect>')
+    # Mark each join, otherwise the chart reads as one uninterrupted run.
+    for s_start, s_end, base in offsets[:-1]:
+        x = pad_l + plot_w * ((base + (s_end - s_start)) / span)
+        parts.append(f'<line class="grid" x1="{x:.1f}" y1="{pad_t - 6}" '
+                     f'x2="{x:.1f}" y2="{height - 14}" stroke-dasharray="3 3"/>')
     parts.append("</svg>")
 
     legend = ["<div class='legend'>"]
@@ -678,6 +698,31 @@ def build_rows(samples, raw_dir, filtered_dir, per_stage):
     return rows
 
 
+# A gap this long with nothing running means the run stopped and was started
+# again later. Snakemake schedules the next job as soon as a core frees, so
+# real gaps inside one run are seconds; ten minutes is far outside that and
+# well inside the shortest plausible break between two sittings.
+IDLE_GAP_S = 600
+
+
+def split_sittings(placed, gap=IDLE_GAP_S):
+    """[(start, end)] per contiguous working period, earliest first.
+
+    Jobs overlap, so this merges intervals rather than pairing them up: a
+    sitting ends only when nothing at all is running for `gap` seconds.
+    """
+    if not placed:
+        return []
+    spans = sorted((j["start"], j["end"]) for j in placed)
+    out = [list(spans[0])]
+    for start, end in spans[1:]:
+        if start - out[-1][1] > gap:
+            out.append([start, end])
+        else:
+            out[-1][1] = max(out[-1][1], end)
+    return [tuple(x) for x in out]
+
+
 def find_flags(rows, cfg):
     """Absolute QC checks, plus one relative depth check.
 
@@ -798,10 +843,21 @@ def main():
     else:
         span, started, finished = None, None, None
 
-    # The two headline numbers. Parallelism is what the run achieved;
-    # utilisation is what it achieved against what the machine offered.
-    parallelism = (total_wall / span) if span else None
-    utilisation = (total_cpu / (span * cores) * 100) if (span and cores) else None
+    # A benchmark file is only rewritten by a job that runs, so an output
+    # directory that was resumed holds records from several sittings. Taking
+    # the span from the earliest to the latest then measures the calendar
+    # gap between them, not a run: a 39-minute resume of a week-old directory
+    # reported 144 hours elapsed and 0.5% core use, with nothing to say why.
+    # Split the jobs wherever the machine was completely idle and measure only
+    # the time it was actually working.
+    sittings = split_sittings(placed)
+    active = sum(e - s for s, e in sittings) or None
+
+    # The two headline numbers, against active time rather than the calendar.
+    # Parallelism is what the run achieved; utilisation is what it achieved
+    # against what the machine offered.
+    parallelism = (total_wall / active) if active else None
+    utilisation = (total_cpu / (active * cores) * 100) if (active and cores) else None
 
     busiest = max(rollup, key=lambda r: r["wall_total"]) if rollup else None
     flags = find_flags(rows, cfg)
@@ -829,6 +885,10 @@ def main():
             "started": started.isoformat(sep=" ", timespec="seconds") if started else None,
             "finished": finished.isoformat(sep=" ", timespec="seconds") if finished else None,
             "span_seconds": span,
+            # active excludes the idle gaps between sittings; on a run that was
+            # never resumed the two are the same.
+            "active_seconds": active,
+            "sittings": len(sittings) or None,
             "cores": cores or None,
             "barcodes": len(rows),
             "total_raw_reads": total_raw_reads,
@@ -864,12 +924,14 @@ def main():
     # headline tiles
     h.append("<section class='stats'>")
     for n, k, hint in [
-        (dur(span), "Elapsed", "first job start to last job end"),
+        (dur(active), "Elapsed",
+         "time actually working, across %d runs" % len(sittings)
+         if len(sittings) > 1 else "first job start to last job end"),
         (dur(total_cpu), "CPU time", "summed over every job"),
         (f"{parallelism:.1f}&times;" if parallelism else "-", "Parallelism",
          "jobs in flight, on average"),
         (pct(utilisation, 0) if utilisation else "-", "Core use",
-         f"of {cores} cores over the elapsed time" if cores
+         f"of {cores} cores while working" if cores
          else "core count unknown"),
         (f"{peak_rss:,.0f} MB" if peak_rss else "-", "Peak RSS",
          "largest single job"),
@@ -924,6 +986,27 @@ def main():
     # exist. Snakemake finds every one current, runs no stage job, and a
     # benchmark is written by a job that runs. Directories built before 1.1.0
     # added `benchmark:` land here on their first re-run.
+    # Timings from more than one sitting. Say so where the numbers are, rather
+    # than letting a reader take "Elapsed" for the length of the run they just
+    # watched. The stage and per-barcode tables are unaffected -- each job's own
+    # wall and CPU time is whatever that job took, whenever it ran.
+    if len(sittings) > 1:
+        first = datetime.fromtimestamp(sittings[0][0])
+        last = datetime.fromtimestamp(sittings[-1][1])
+        idle = (span - active) if (span and active) else 0
+        h.append(
+            "<section class='panel'><h2>Timings from more than one run</h2>"
+            f"<p class='sub'>The <code>benchmark:</code> records here were "
+            f"written across <strong>{len(sittings)} separate runs</strong> "
+            f"between {first:%Y-%m-%d %H:%M} and {last:%Y-%m-%d %H:%M}. Only a "
+            f"job that runs writes a benchmark, so resuming a directory leaves "
+            f"the earlier stages' records in place beside the new ones.</p>"
+            f"<p class='note'>Elapsed, parallelism and core use above count "
+            f"only the time the machine was working &mdash; {dur(idle)} of idle "
+            f"time between runs is excluded, which is why they will not match "
+            f"the wall clock of any single run. Per-stage and per-barcode "
+            f"timings are unaffected.</p></section>")
+
     if not jobs:
         h.append(
             "<section class='panel'><h2>No timing data</h2>"
@@ -948,11 +1031,11 @@ def main():
         h.append("<section class='panel'><h2>Machine use</h2>")
         h.append(
             f"<p class='sub'>{dur(total_cpu)} of CPU work finished in "
-            f"{dur(span)}, using <strong>{pct(utilisation, 0)}</strong> of the "
+            f"{dur(active)}, using <strong>{pct(utilisation, 0)}</strong> of the "
             f"{cores} cores available. On average "
             f"<strong>{parallelism:.1f}</strong> job"
             f"{'s were' if parallelism >= 1.5 else ' was'} running at a time.</p>")
-        wasted = dur(span * cores * (1 - (utilisation or 0) / 100))
+        wasted = dur(active * cores * (1 - (utilisation or 0) / 100))
         if utilisation is not None and utilisation < 50:
             h.append(
                 f"<p class='sub'>That leaves <strong>{wasted}</strong> of core "
@@ -1104,7 +1187,7 @@ def main():
     out_html.write_text("\n".join(h), encoding="utf-8")
 
     print(f"barcodes      {len(rows)}")
-    print(f"elapsed       {dur(span)}")
+    print(f"elapsed       {dur(active)}" + (f" across {len(sittings)} runs" if len(sittings) > 1 else ""))
     print(f"cpu time      {dur(total_cpu)}")
     if parallelism:
         print(f"parallelism   {parallelism:.1f}x of {cores} cores")
