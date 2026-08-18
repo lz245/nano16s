@@ -687,15 +687,21 @@ file to you:
 scp you@server:/path/to/my_results/nano16s_report.html .
 ```
 
-**`nano16s test` writes to a temporary directory** — `/tmp/nano16s_test_XXXXXX`,
-printed at the end of the run. `/tmp` is cleared on reboot, so copy anything you
-want to keep:
+**If the report is under `/tmp`, copy it to your home directory first.**
 
 ```bash
 cp /tmp/nano16s_test_*/nano16s_report.html ~/
+xdg-open ~/nano16s_report.html
 ```
 
-Real runs go wherever you point `-o`, so they are not affected.
+Two reasons. `/tmp` is cleared on reboot. More immediately, on Ubuntu the
+default Firefox is a **snap**, and a snap gets its own private `/tmp` — so the
+browser genuinely cannot see a file that `ls` shows you in the terminal, and
+reports *File not found* for a path that exists. Anything under your home
+directory is readable.
+
+Older versions of `nano16s test` wrote there; real runs go wherever you point
+`-o`, so they were never affected.
 
 ### What is in it
 
@@ -928,6 +934,27 @@ barcode.
 
 **The run is using less of my CPU than expected**
 See the Machine use section of the performance report, and section 13.
+
+**The browser says *File not found* for a report that `ls` shows is there**
+
+Almost always a report under `/tmp` opened with Ubuntu's snap Firefox. A snap
+runs with its own private `/tmp`, so the file you can see in the terminal is
+genuinely not in the `/tmp` the browser sees. Confirm with:
+
+```bash
+snap list firefox                      # a version listed means it is a snap
+readlink -f "$(command -v firefox)"    # /snap/bin/firefox means the same
+```
+
+Copy the report somewhere under your home directory and open it there:
+
+```bash
+cp /tmp/nano16s_test_*/nano16s_report.html ~/
+xdg-open ~/nano16s_report.html
+```
+
+The same applies to `performance_report.html`, and to Chromium installed as a
+snap.
 
 **`Gtk-Message: Not loading module "atk-bridge"` when opening a report**
 
