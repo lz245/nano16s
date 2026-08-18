@@ -31,6 +31,43 @@ report, so a result can always be traced to the database that produced it.
   other hardware lookup in the report already tolerated its source being
   unreadable, and this one did not.
 
+- The CLI now names the performance report in `--help` and after a run. It was
+  written on every run since 1.1.0 but nothing in the command mentioned it.
+- A clean run that produced no `nano16s_report.html` no longer reports failure.
+  The final line was a `[[ -f ... ]] && echo` list, so its own false branch
+  became the script's exit status.
+- Barcodes appear in the same order in every chart of the report. The funnel
+  chart reads `preprocessing_summary.csv`, which is sorted; the composition
+  charts read Emu's combined table, whose column order is whatever its input
+  directory listing happened to be. Two runs of the same data produced
+  differently ordered tables, and within one page the two charts could not be
+  read against each other.
+- A `MANIFEST.json` missing one key no longer costs the whole database
+  description. The `,` format spec raises on a string, so the `'?'` default
+  could never be rendered and the Methods entry fell back to a directory name.
+- `nano16s -d` no longer exits with no output at all when part of the input is
+  unreadable. The disk-space estimate ran under `set -euo pipefail` with
+  stderr suppressed, so a `du` that could not read one subdirectory ended the
+  run before the banner printed. The estimate now degrades to "size unknown".
+- Numeric options are validated before the run starts, and a `--min-length`
+  above `--max-length` is refused. That window filters out every read, so the
+  run used to complete with empty tables and no error.
+- `nano16s db build` no longer deletes a working database before rebuilding it.
+  The directory is named after the current month, so a second build in the same
+  month removed the old database and an Emu failure or Ctrl-C then left
+  neither. The new database is built alongside and swapped in once complete.
+- Database downloads have a timeout and are verified against `Content-Length`.
+  A stalled connection hung the build indefinitely, and a truncated file was
+  cached as valid, so every later build failed in `gzip.open` with nothing
+  pointing at `~/.nano16s/cache`.
+- CI runs the whole test suite rather than one file, and enforces `ruff` and
+  `shellcheck`. Naming `test/test_parsers.py` explicitly meant 31 of the 53
+  tests never ran, and the linters were configured but only in the opt-in
+  pre-commit hook.
+- The weekly CI artifact contains the performance report, its CSV and JSON, and
+  the benchmark records. It had listed only the files that existed before 1.1.0,
+  so every weekly artifact was quietly incomplete.
+
 ## [1.1.0] — 2026-08-11
 
 ### Added
