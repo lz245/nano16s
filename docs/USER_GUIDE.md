@@ -303,8 +303,8 @@ If one of them is missing:
 ## 4. Install nano16s
 
 ```bash
-git clone https://github.com/lz245/nano16s-local.git
-cd nano16s-local
+git clone https://github.com/lz245/nano16s.git
+cd nano16s
 bash install.sh
 conda activate nano16s
 ```
@@ -926,7 +926,7 @@ Windows. Re-clone, or run `dos2unix` on the affected file.
 ### Still stuck
 
 Open an issue at
-<https://github.com/lz245/nano16s-local/issues>. Include the output of
+<https://github.com/lz245/nano16s/issues>. Include the output of
 `nano16s --version`, your operating system, the exact command, and the error.
 The `performance.json` from a failed run is small and records the machine and
 settings, which usually answers the first three questions at once.

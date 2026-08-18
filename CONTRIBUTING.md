@@ -22,8 +22,8 @@ paste it rather than summarising.
 ## Setting up for development
 
 ```bash
-git clone https://github.com/lz245/nano16s-local.git
-cd nano16s-local
+git clone https://github.com/lz245/nano16s.git
+cd nano16s
 bash install.sh
 conda activate nano16s
 ```
