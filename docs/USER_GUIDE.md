@@ -592,7 +592,7 @@ Not sure what you have? Run the pipeline on a couple of barcodes with a wide
 window, then look at the median read length in the report and narrow it:
 
 ```bash
-nano16s -d /path/to/your_run/fastq_pass -o /tmp/length_check \
+nano16s -d /path/to/your_run/fastq_pass -o ~/length_check \
         --min-length 200 --max-length 10000
 ```
 
@@ -768,21 +768,19 @@ file to you:
 scp you@server:/path/to/my_results/nano16s_report.html .
 ```
 
-**If the report is under `/tmp`, copy it to your home directory first.**
+**Do not put results under `/tmp`.** On Ubuntu the default Firefox is a
+**snap**, and a snap gets its own private `/tmp` — so the browser genuinely
+cannot see a file that `ls` shows you in the terminal, and reports *File not
+found* for a path that exists. `/tmp` is also cleared on reboot.
+
+`nano16s test` writes into your home directory for this reason, and `-o`
+should point somewhere under it too. If you already have a report stuck under
+`/tmp`, copy it out:
 
 ```bash
 cp /tmp/nano16s_test_*/nano16s_report.html ~/
 xdg-open ~/nano16s_report.html
 ```
-
-Two reasons. `/tmp` is cleared on reboot. More immediately, on Ubuntu the
-default Firefox is a **snap**, and a snap gets its own private `/tmp` — so the
-browser genuinely cannot see a file that `ls` shows you in the terminal, and
-reports *File not found* for a path that exists. Anything under your home
-directory is readable.
-
-Older versions of `nano16s test` wrote there; real runs go wherever you point
-`-o`, so they were never affected.
 
 ---
 
@@ -1072,7 +1070,9 @@ See the Machine use section of the performance report, and section 14.
 
 Almost always a report under `/tmp` opened with Ubuntu's snap Firefox. A snap
 runs with its own private `/tmp`, so the file you can see in the terminal is
-genuinely not in the `/tmp` the browser sees. Confirm with:
+genuinely not in the `/tmp` the browser sees. `nano16s test` no longer writes
+there, so this means either an older version or an `-o` you chose. Confirm
+the browser with:
 
 ```bash
 snap list firefox                      # a version listed means it is a snap
