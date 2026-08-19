@@ -817,6 +817,14 @@ looks wrong.
 **Headline figures.** Elapsed time, total CPU time, average number of jobs
 running at once, percentage of your cores used, and peak memory.
 
+Elapsed counts the time the machine was **working**, which for an
+uninterrupted run is simply start to finish. If you resumed a run, only the
+stages that actually re-ran wrote new timings, so the report would otherwise
+measure the calendar gap between your two sittings rather than either run. It
+excludes that idle time instead, and says so above the tables — naming the
+dates and how much was excluded. Core use and parallelism are computed on the
+same basis.
+
 **System.** The machine the run was measured on: CPU model, cores, memory,
 operating system, kernel, architecture. Timings only compare meaningfully
 between runs on comparable hardware, so this travels with the report.
@@ -834,7 +842,19 @@ wall time means the stage used several threads; the ratio between them tells
 you how well it used them.
 
 **Timeline.** Every job placed by when it actually ran, one row per barcode.
-Gaps are idle capacity.
+Gaps within a run are idle capacity — cores that were free while something
+else finished. A dashed vertical line marks a point where the run stopped and
+was started again later; the wait between sittings is cut out rather than
+drawn, so the chart stays readable.
+
+Stages that take under a second — merging, and both NanoStat passes — appear
+as thin ticks. That is honest scale against an axis measured in minutes, not
+a rendering fault.
+
+**No timing data.** If the whole report is blank of timings, the run had
+nothing to do: every output was already current, so no job ran and no job
+recorded a benchmark. The report says so rather than leaving you to guess.
+Point `-o` at a new directory, or add `--forceall`, to get timings.
 
 **Worth checking.** QC flags — see the next section.
 
