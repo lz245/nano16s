@@ -486,6 +486,14 @@ def main():
             f"set <code>--min-length</code> and <code>--max-length</code> and re-run."))
 
     # --- assemble -----------------------------------------------------------
+    # A barcode that lost every read to the filter gets an empty Emu output,
+    # which emu_combine skips -- so it is absent from the combined tables and
+    # from the charts built on them, while the funnel chart above and the
+    # header still count it. Downstream, an R or phyloseq script reading the
+    # TSV sees fewer samples than the run had and nothing explains the gap.
+    # Name them where the charts are.
+    absent = [r["barcode"] for r in rows if r["barcode"] not in set(samples)]
+
     comp_svg, legend, ranked = composition_svg(samples, species, "species")
     gcomp_svg, glegend, _ = composition_svg(samples, genus, "genus")
 
@@ -542,6 +550,13 @@ def main():
         "<section class='panel'><h2>Composition by species</h2>",
         f"<p class='sub'>Top {TOP_N} species by mean relative abundance; everything else "
         f"is grouped as Other. Hover any segment for its exact value.</p>",
+        ("<p class='warn'><strong>"
+         + ", ".join(esc(b) for b in absent)
+         + f"</strong> {'is' if len(absent) == 1 else 'are'} not shown here, and "
+           f"{'is' if len(absent) == 1 else 'are'} absent from the tables in "
+           f"<code>07_emu_combined/</code>: no read survived filtering, so there "
+           f"was nothing to classify. The read counts above still include "
+           f"{'it' if len(absent) == 1 else 'them'}.</p>") if absent else "",
         comp_svg, legend,
         "</section>",
 
