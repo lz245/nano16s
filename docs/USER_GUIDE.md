@@ -18,26 +18,54 @@ a placeholder — substitute your own run directory wherever you see
 1. [What nano16s does](#1-what-nano16s-does)
 2. [What you need](#2-what-you-need)
 3. [Set up your computer](#3-set-up-your-computer)
+    - [A word on the terminal](#a-word-on-the-terminal)
+    - [Windows](#windows)
+    - [macOS](#macos)
+    - [Linux](#linux)
+    - [Install Miniforge (all platforms)](#install-miniforge-all-platforms)
+    - [Check you are ready](#check-you-are-ready)
 4. [Install nano16s](#4-install-nano16s)
 5. [Build the reference database](#5-build-the-reference-database)
 6. [Verify the install](#6-verify-the-install)
-7. [Prepare your data](#7-prepare-your-data)
-8. [Choose settings for your amplicon](#8-choose-settings-for-your-amplicon)
-9. [Plan the run](#9-plan-the-run-time-disk-memory)
-10. [Run it](#10-run-it)
-11. [What you get](#11-what-you-get)
-12. [Read the results report](#12-read-the-results-report)
-13. [Read the performance report](#13-read-the-performance-report)
-14. [Quality control: what gets flagged](#14-quality-control-what-gets-flagged)
-15. [Use the tables downstream](#15-use-the-tables-downstream)
-16. [Interpreting 16S results](#16-interpreting-16s-results)
-17. [Re-running and changing settings](#17-re-running-and-changing-settings)
-18. [Processing several runs](#18-processing-several-runs)
-19. [Troubleshooting](#19-troubleshooting)
-20. [Reference](#20-reference)
+7. [Try it on real data](#7-try-it-on-real-data)
+8. [Prepare your data](#8-prepare-your-data)
+    - [The layout nano16s expects](#the-layout-nano16s-expects)
+    - [Check before you run](#check-before-you-run)
+    - [Situations you may need to handle](#situations-you-may-need-to-handle)
+    - [Record which barcode is which sample](#record-which-barcode-is-which-sample)
+9. [Choose settings for your amplicon](#9-choose-settings-for-your-amplicon)
+10. [Plan the run (time, disk, memory)](#10-plan-the-run-time-disk-memory)
+11. [Run it](#11-run-it)
+12. [What you get](#12-what-you-get)
+13. [Read the results report](#13-read-the-results-report)
+14. [Read the performance report](#14-read-the-performance-report)
+15. [Quality control: what gets flagged](#15-quality-control-what-gets-flagged)
+16. [Use the tables downstream](#16-use-the-tables-downstream)
+    - [R](#r)
+    - [Python](#python)
+    - [phyloseq](#phyloseq)
+    - [Excel](#excel)
+17. [Interpreting 16S results](#17-interpreting-16s-results)
+18. [Re-running and changing settings](#18-re-running-and-changing-settings)
+19. [Processing several runs](#19-processing-several-runs)
+20. [Troubleshooting](#20-troubleshooting)
+21. [Reference](#21-reference)
+    - [Command line](#command-line)
+    - [Paths](#paths)
+    - [Tuning per-rule resources](#tuning-per-rule-resources)
+    - [Citing](#citing)
 
-**Never used a terminal before?** Start at section 3 and follow it in order.
-It assumes nothing is installed.
+**Reading this for the first time?** Sections 1 to 11 are a walkthrough: they
+start with nothing installed and end with a finished run. Follow them in order.
+
+**Already have results?** Sections 12 to 17 explain what the files and reports
+contain and how to analyse them.
+
+**Something went wrong?** Section 20 lists the error messages this pipeline
+produces, each with its cause and its fix.
+
+**Looking one thing up?** Section 21 is the reference — every command-line
+option, every path, and how to change the defaults.
 
 ---
 
@@ -101,7 +129,7 @@ know before that is worth doing.
 | **Operating system** | Windows 10/11, macOS (Intel or Apple Silicon), or Linux |
 | **RAM** | 8 GB minimum, 16 GB or more comfortable |
 | **CPU** | any; more cores means proportionally faster runs |
-| **Disk** | about 3× your data, plus ~1 GB software and ~150 MB database |
+| **Disk** | about 2–3× your data, plus ~2 GB for the software and ~150 MB for the database and its download cache |
 | **Internet** | needed for setup and once to build the database; runs are offline |
 
 On Windows everything runs inside WSL2, which is a real Linux environment
@@ -128,7 +156,7 @@ everything against bundled demo data.
 | Installing nano16s (section 4) | 5–15 minutes, once |
 | Building the database (section 5) | ~10 minutes, once |
 | Verifying it works (section 6) | ~5 minutes |
-| A real run | minutes to hours, depending on data size (section 9) |
+| A real run | minutes to hours, depending on data size (section 10) |
 
 ### What you do not need
 
@@ -209,7 +237,7 @@ they are already installed.
 
 WSL has two failure modes worth knowing about before a long run — a clock that
 drifts from Windows and stops a run near the end, and Windows line endings
-breaking scripts. Both are in section 19 with their fixes.
+breaking scripts. Both are in section 20 with their fixes.
 
 Continue at *Install Miniforge* below.
 
@@ -385,7 +413,11 @@ Do this after installing, and again after any change to your conda environment.
 It is much easier to debug a broken install on demo data than three hours into a
 real run.
 
-### Trying it on a full sequencing run
+
+---
+
+## 7. Try it on real data
+
 
 The bundled demo is deliberately tiny — six barcodes, enough to prove the
 install works. If you want to see what nano16s does with a real run before you
@@ -404,10 +436,10 @@ commit your own data, the five runs it was developed against are published:
 Each archive unpacks to a single directory holding a `fastq_pass/` folder with
 one `barcode*` subdirectory per sample, exactly as MinKNOW writes it, plus that
 run's original MinKNOW report — so it doubles as a worked example of the layout
-section 7 describes. `fastq_fail` and `unclassified` reads are not included.
+section 8 describes. `fastq_fail` and `unclassified` reads are not included.
 
 Start with `Flongle_Demo01`: it is the smallest, and takes about 45 minutes on
-a 20-core machine — see the table in section 9 for the others.
+a 20-core machine — see the table in section 10 for the others.
 
 ```bash
 mkdir -p ~/data && cd ~/data
@@ -429,11 +461,11 @@ sha256sum -c CHECKSUMS.txt --ignore-missing
 ```
 
 The DOI always resolves to the current version. The data is licensed CC BY 4.0
-— cite it if you use it in your own work (see section 20).
+— cite it if you use it in your own work (see section 21).
 
 ---
 
-## 7. Prepare your data
+## 8. Prepare your data
 
 This is where most first runs go wrong, and it is worth five minutes of
 checking.
@@ -530,7 +562,7 @@ sample numbering rarely line up.
 
 ---
 
-## 8. Choose settings for your amplicon
+## 9. Choose settings for your amplicon
 
 ### Length window — the setting that matters most
 
@@ -560,7 +592,7 @@ Not sure what you have? Run the pipeline on a couple of barcodes with a wide
 window, then look at the median read length in the report and narrow it:
 
 ```bash
-nano16s -d /path/to/your_run/fastq_pass -o /tmp/length_check \
+nano16s -d /path/to/your_run/fastq_pass -o ~/length_check \
         --min-length 200 --max-length 10000
 ```
 
@@ -585,14 +617,14 @@ nano16s -d /path/to/your_run/fastq_pass -c 4
 
 ---
 
-## 9. Plan the run (time, disk, memory)
+## 10. Plan the run (time, disk, memory)
 
 ### How long
 
 Runtime scales with the number of reads, not the number of barcodes. As
 measured on a 20-core workstation:
 
-| Reads in the run | Barcodes | Elapsed | Dataset (section 6) |
+| Reads in the run | Barcodes | Elapsed | Dataset (section 7) |
 |---|---|---|---|
 | ~200,000 | 24 | ~45 min | `Flongle_Demo01` |
 | ~340,000 | 24 | ~75 min | `Flongle_Demo03` |
@@ -616,8 +648,11 @@ tail -f my_run.log        # watch progress; Ctrl-C stops watching, not the run
 
 ### How much disk
 
-About 3× your input. nano16s checks free space before starting and warns you if
-it looks tight. Afterwards you can reclaim most of it:
+Between 2× and 3× your input — 2.0× to 2.3× across the five demo runs. nano16s
+budgets the higher figure, checks free space before starting, and warns you if
+it looks tight.
+
+Afterwards you can reclaim most of it:
 
 ```bash
 rm -rf my_results/01_merged my_results/03_trimmed
@@ -625,6 +660,9 @@ rm -rf my_results/01_merged my_results/03_trimmed
 
 Keep `04_filtered/` if you might re-run the classification step against a newer
 database; it is the input to Emu.
+
+The database build also leaves its NCBI downloads in `~/.nano16s/cache`, about
+100 MB. It is only needed if you rebuild, so it is safe to delete.
 
 ### How much memory
 
@@ -634,7 +672,7 @@ report records the actual peak for every run.
 
 ---
 
-## 10. Run it
+## 11. Run it
 
 Preview first. This lists the steps without executing them, and catches a bad
 path or a missing database in seconds rather than minutes:
@@ -671,7 +709,7 @@ picks up where it stopped.
 
 ---
 
-## 11. What you get
+## 12. What you get
 
 ```
 my_results/
@@ -705,11 +743,8 @@ testing.
 Both reports are self-contained single files — no internet needed to view them,
 safe to email or attach to a manuscript.
 
----
+### Opening the reports
 
-## 12. Read the results report
-
-### Opening it
 
 The report is one self-contained HTML file — no internet connection, no
 external files, safe to email. Open it the way you would open any web page:
@@ -733,23 +768,25 @@ file to you:
 scp you@server:/path/to/my_results/nano16s_report.html .
 ```
 
-**If the report is under `/tmp`, copy it to your home directory first.**
+**Do not put results under `/tmp`.** On Ubuntu the default Firefox is a
+**snap**, and a snap gets its own private `/tmp` — so the browser genuinely
+cannot see a file that `ls` shows you in the terminal, and reports *File not
+found* for a path that exists. `/tmp` is also cleared on reboot.
+
+`nano16s test` writes into your home directory for this reason, and `-o`
+should point somewhere under it too. If you already have a report stuck under
+`/tmp`, copy it out:
 
 ```bash
 cp /tmp/nano16s_test_*/nano16s_report.html ~/
 xdg-open ~/nano16s_report.html
 ```
 
-Two reasons. `/tmp` is cleared on reboot. More immediately, on Ubuntu the
-default Firefox is a **snap**, and a snap gets its own private `/tmp` — so the
-browser genuinely cannot see a file that `ls` shows you in the terminal, and
-reports *File not found* for a path that exists. Anything under your home
-directory is readable.
+---
 
-Older versions of `nano16s test` wrote there; real runs go wherever you point
-`-o`, so they were never affected.
+## 13. Read the results report
 
-### What is in it
+
 
 **Read funnel.** Reads per barcode before and after filtering. What you want is
 consistency: barcodes retaining broadly similar proportions. One barcode
@@ -769,7 +806,7 @@ is recorded here.
 
 ---
 
-## 13. Read the performance report
+## 14. Read the performance report
 
 Open `performance_report.html`. This one is about the run rather than the
 biology — reach for it when something took longer than expected, or a barcode
@@ -777,6 +814,14 @@ looks wrong.
 
 **Headline figures.** Elapsed time, total CPU time, average number of jobs
 running at once, percentage of your cores used, and peak memory.
+
+Elapsed counts the time the machine was **working**, which for an
+uninterrupted run is simply start to finish. If you resumed a run, only the
+stages that actually re-ran wrote new timings, so the report would otherwise
+measure the calendar gap between your two sittings rather than either run. It
+excludes that idle time instead, and says so above the tables — naming the
+dates and how much was excluded. Core use and parallelism are computed on the
+same basis.
 
 **System.** The machine the run was measured on: CPU model, cores, memory,
 operating system, kernel, architecture. Timings only compare meaningfully
@@ -795,7 +840,19 @@ wall time means the stage used several threads; the ratio between them tells
 you how well it used them.
 
 **Timeline.** Every job placed by when it actually ran, one row per barcode.
-Gaps are idle capacity.
+Gaps within a run are idle capacity — cores that were free while something
+else finished. A dashed vertical line marks a point where the run stopped and
+was started again later; the wait between sittings is cut out rather than
+drawn, so the chart stays readable.
+
+Stages that take under a second — merging, and both NanoStat passes — appear
+as thin ticks. That is honest scale against an axis measured in minutes, not
+a rendering fault.
+
+**No timing data.** If the whole report is blank of timings, the run had
+nothing to do: every output was already current, so no job ran and no job
+recorded a benchmark. The report says so rather than leaving you to guess.
+Point `-o` at a new directory, or add `--forceall`, to get timings.
 
 **Worth checking.** QC flags — see the next section.
 
@@ -804,7 +861,7 @@ heading to sort.
 
 ---
 
-## 14. Quality control: what gets flagged
+## 15. Quality control: what gets flagged
 
 The performance report checks every barcode against fixed thresholds and
 explains anything that fails. These are absolute, not relative to the rest of
@@ -824,7 +881,7 @@ the reads look the way full-length 16S data should.
 
 ---
 
-## 15. Use the tables downstream
+## 16. Use the tables downstream
 
 The combined tables are plain tab-separated text. Rows are taxa, columns are
 barcodes.
@@ -865,12 +922,40 @@ converting taxon names that look like dates.
 
 ---
 
-## 16. Interpreting 16S results
+## 17. Interpreting 16S results
 
 **Genus is the defensible resolution.** Species-level assignment from 16S is
 genuinely hard — many genera contain species whose 16S genes are near-identical,
 and nanopore error rates make it harder. Species tables are provided because
 they are sometimes informative, but conclusions are safer at genus level.
+
+**Running the same data twice can move species-level numbers.** This is worth
+knowing before you put a species table in a paper. Two from-scratch runs of the
+same MinION dataset, same database, same settings, gave:
+
+| Rank | Largest difference between the two runs |
+|---|---|
+| Species | **17.5 percentage points** |
+| Genus | 0.43 pp |
+| Phylum | 0.04 pp |
+
+Raw read counts were identical in all 24 barcodes. Four barcodes ended with
+slightly different *filtered* counts — 31 to 66 reads out of 80,000 to 120,000,
+under 0.1% — because Porechop infers adapter sequences from the reads
+themselves and does not always infer exactly the same ones. Every large shift
+was in a barcode affected by that.
+
+The shifts were entirely within one genus: *Lactobacillus gasseri*,
+*L. johnsonii* and *L. taiwanensis* traded abundance with each other while the
+*Lactobacillus* total moved by 0.02 pp. Those species have near-identical 16S
+genes, so apportioning reads between them is an ill-conditioned problem — a
+0.05% change in the input moves the answer a lot, and neither answer is more
+correct than the other.
+
+The other four demo datasets reproduced exactly, so this is occasional rather
+than routine. Report genus-level abundances; if a species-level claim matters,
+state that it sits inside a closely related complex and check it holds across
+repeat runs.
 
 **Relative abundance is compositional.** Proportions sum to 1, so one taxon
 rising means others fall by arithmetic, not biology. Use methods designed for
@@ -889,7 +974,7 @@ report. Cite it alongside the tool versions.
 
 ---
 
-## 17. Re-running and changing settings
+## 18. Re-running and changing settings
 
 nano16s tracks what has been done. Re-running the same command finishes in
 seconds; changing a setting re-runs only what that setting affects.
@@ -922,7 +1007,7 @@ discard existing work by design, which is what makes resuming possible.
 
 ---
 
-## 18. Processing several runs
+## 19. Processing several runs
 
 Give each run its own output directory and loop:
 
@@ -948,7 +1033,7 @@ Points worth noting:
 
 ---
 
-## 19. Troubleshooting
+## 20. Troubleshooting
 
 **`nano16s: command not found`**
 Run `conda activate nano16s`. Needed in every new terminal.
@@ -979,13 +1064,15 @@ sequences from your data instead of assuming them. Budget a few minutes per
 barcode.
 
 **The run is using less of my CPU than expected**
-See the Machine use section of the performance report, and section 13.
+See the Machine use section of the performance report, and section 14.
 
 **The browser says *File not found* for a report that `ls` shows is there**
 
 Almost always a report under `/tmp` opened with Ubuntu's snap Firefox. A snap
 runs with its own private `/tmp`, so the file you can see in the terminal is
-genuinely not in the `/tmp` the browser sees. Confirm with:
+genuinely not in the `/tmp` the browser sees. `nano16s test` no longer writes
+there, so this means either an older version or an `-o` you chose. Confirm
+the browser with:
 
 ```bash
 snap list firefox                      # a version listed means it is a snap
@@ -1065,7 +1152,7 @@ settings, which usually answers the first three questions at once.
 
 ---
 
-## 20. Reference
+## 21. Reference
 
 ### Command line
 
@@ -1090,6 +1177,7 @@ Subcommands: `nano16s db build`, `nano16s db list`, `nano16s test`,
 | Path | What |
 |---|---|
 | `~/.nano16s/db/<version>/` | reference databases |
+| `~/.nano16s/cache/` | NCBI downloads kept for rebuilding, ~100 MB, safe to delete |
 | `config/config.yaml` | defaults, including per-rule CPU and memory |
 | `<output>/benchmarks/` | per-job timing and memory records |
 
@@ -1128,7 +1216,7 @@ Cite the underlying tools, which do the actual work:
 See [CITATION.cff](../CITATION.cff) for nano16s itself, and record the database
 version from your report.
 
-If you use the demo datasets from section 6, cite them as well:
+If you use the demo datasets from section 7, cite them as well:
 
 - Zhang, L. & Adapa, P. D. *nano16s demo datasets: Oxford Nanopore full-length
   16S rRNA amplicon sequencing runs (Flongle, MinION, PromethION)*. Zenodo (2026).
