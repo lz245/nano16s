@@ -895,6 +895,34 @@ genuinely hard — many genera contain species whose 16S genes are near-identica
 and nanopore error rates make it harder. Species tables are provided because
 they are sometimes informative, but conclusions are safer at genus level.
 
+**Running the same data twice can move species-level numbers.** This is worth
+knowing before you put a species table in a paper. Two from-scratch runs of the
+same MinION dataset, same database, same settings, gave:
+
+| Rank | Largest difference between the two runs |
+|---|---|
+| Species | **17.5 percentage points** |
+| Genus | 0.43 pp |
+| Phylum | 0.04 pp |
+
+Raw read counts were identical in all 24 barcodes. Four barcodes ended with
+slightly different *filtered* counts — 31 to 66 reads out of 80,000 to 120,000,
+under 0.1% — because Porechop infers adapter sequences from the reads
+themselves and does not always infer exactly the same ones. Every large shift
+was in a barcode affected by that.
+
+The shifts were entirely within one genus: *Lactobacillus gasseri*,
+*L. johnsonii* and *L. taiwanensis* traded abundance with each other while the
+*Lactobacillus* total moved by 0.02 pp. Those species have near-identical 16S
+genes, so apportioning reads between them is an ill-conditioned problem — a
+0.05% change in the input moves the answer a lot, and neither answer is more
+correct than the other.
+
+The other four demo datasets reproduced exactly, so this is occasional rather
+than routine. Report genus-level abundances; if a species-level claim matters,
+state that it sits inside a closely related complex and check it holds across
+repeat runs.
+
 **Relative abundance is compositional.** Proportions sum to 1, so one taxon
 rising means others fall by arithmetic, not biology. Use methods designed for
 compositional data when testing for differences.
