@@ -27,34 +27,45 @@ a placeholder — substitute your own run directory wherever you see
 4. [Install nano16s](#4-install-nano16s)
 5. [Build the reference database](#5-build-the-reference-database)
 6. [Verify the install](#6-verify-the-install)
-7. [Prepare your data](#7-prepare-your-data)
-8. [Choose settings for your amplicon](#8-choose-settings-for-your-amplicon)
-9. [Plan the run](#9-plan-the-run-time-disk-memory)
-10. [Run it](#10-run-it)
-11. [What you get](#11-what-you-get)
-12. [Read the results report](#12-read-the-results-report)
-13. [Read the performance report](#13-read-the-performance-report)
-14. [Quality control: what gets flagged](#14-quality-control-what-gets-flagged)
-15. [Use the tables downstream](#15-use-the-tables-downstream)
+7. [Try it on real data](#7-try-it-on-real-data)
+8. [Prepare your data](#8-prepare-your-data)
+    - [The layout nano16s expects](#the-layout-nano16s-expects)
+    - [Check before you run](#check-before-you-run)
+    - [Situations you may need to handle](#situations-you-may-need-to-handle)
+    - [Record which barcode is which sample](#record-which-barcode-is-which-sample)
+9. [Choose settings for your amplicon](#9-choose-settings-for-your-amplicon)
+10. [Plan the run (time, disk, memory)](#10-plan-the-run-time-disk-memory)
+11. [Run it](#11-run-it)
+12. [What you get](#12-what-you-get)
+13. [Read the results report](#13-read-the-results-report)
+14. [Read the performance report](#14-read-the-performance-report)
+15. [Quality control: what gets flagged](#15-quality-control-what-gets-flagged)
+16. [Use the tables downstream](#16-use-the-tables-downstream)
     - [R](#r)
     - [Python](#python)
     - [phyloseq](#phyloseq)
     - [Excel](#excel)
-16. [Interpreting 16S results](#16-interpreting-16s-results)
-17. [Re-running and changing settings](#17-re-running-and-changing-settings)
-18. [Processing several runs](#18-processing-several-runs)
-19. [Troubleshooting](#19-troubleshooting)
-20. [Reference](#20-reference)
+17. [Interpreting 16S results](#17-interpreting-16s-results)
+18. [Re-running and changing settings](#18-re-running-and-changing-settings)
+19. [Processing several runs](#19-processing-several-runs)
+20. [Troubleshooting](#20-troubleshooting)
+21. [Reference](#21-reference)
     - [Command line](#command-line)
     - [Paths](#paths)
     - [Tuning per-rule resources](#tuning-per-rule-resources)
     - [Citing](#citing)
 
-**Never used a terminal before?** Start at section 3 and follow it in order.
-It assumes nothing is installed.
+**Reading this for the first time?** Sections 1 to 11 are a walkthrough: they
+start with nothing installed and end with a finished run. Follow them in order.
 
-**Something went wrong?** Section 19 lists every error message this pipeline
-produces, with its cause and its fix.
+**Already have results?** Sections 12 to 17 explain what the files and reports
+contain and how to analyse them.
+
+**Something went wrong?** Section 20 lists the error messages this pipeline
+produces, each with its cause and its fix.
+
+**Looking one thing up?** Section 21 is the reference — every command-line
+option, every path, and how to change the defaults.
 
 ---
 
@@ -145,7 +156,7 @@ everything against bundled demo data.
 | Installing nano16s (section 4) | 5–15 minutes, once |
 | Building the database (section 5) | ~10 minutes, once |
 | Verifying it works (section 6) | ~5 minutes |
-| A real run | minutes to hours, depending on data size (section 9) |
+| A real run | minutes to hours, depending on data size (section 10) |
 
 ### What you do not need
 
@@ -226,7 +237,7 @@ they are already installed.
 
 WSL has two failure modes worth knowing about before a long run — a clock that
 drifts from Windows and stops a run near the end, and Windows line endings
-breaking scripts. Both are in section 19 with their fixes.
+breaking scripts. Both are in section 20 with their fixes.
 
 Continue at *Install Miniforge* below.
 
@@ -402,7 +413,11 @@ Do this after installing, and again after any change to your conda environment.
 It is much easier to debug a broken install on demo data than three hours into a
 real run.
 
-### Trying it on a full sequencing run
+
+---
+
+## 7. Try it on real data
+
 
 The bundled demo is deliberately tiny — six barcodes, enough to prove the
 install works. If you want to see what nano16s does with a real run before you
@@ -421,10 +436,10 @@ commit your own data, the five runs it was developed against are published:
 Each archive unpacks to a single directory holding a `fastq_pass/` folder with
 one `barcode*` subdirectory per sample, exactly as MinKNOW writes it, plus that
 run's original MinKNOW report — so it doubles as a worked example of the layout
-section 7 describes. `fastq_fail` and `unclassified` reads are not included.
+section 8 describes. `fastq_fail` and `unclassified` reads are not included.
 
 Start with `Flongle_Demo01`: it is the smallest, and takes about 45 minutes on
-a 20-core machine — see the table in section 9 for the others.
+a 20-core machine — see the table in section 10 for the others.
 
 ```bash
 mkdir -p ~/data && cd ~/data
@@ -446,11 +461,11 @@ sha256sum -c CHECKSUMS.txt --ignore-missing
 ```
 
 The DOI always resolves to the current version. The data is licensed CC BY 4.0
-— cite it if you use it in your own work (see section 20).
+— cite it if you use it in your own work (see section 21).
 
 ---
 
-## 7. Prepare your data
+## 8. Prepare your data
 
 This is where most first runs go wrong, and it is worth five minutes of
 checking.
@@ -547,7 +562,7 @@ sample numbering rarely line up.
 
 ---
 
-## 8. Choose settings for your amplicon
+## 9. Choose settings for your amplicon
 
 ### Length window — the setting that matters most
 
@@ -602,14 +617,14 @@ nano16s -d /path/to/your_run/fastq_pass -c 4
 
 ---
 
-## 9. Plan the run (time, disk, memory)
+## 10. Plan the run (time, disk, memory)
 
 ### How long
 
 Runtime scales with the number of reads, not the number of barcodes. As
 measured on a 20-core workstation:
 
-| Reads in the run | Barcodes | Elapsed | Dataset (section 6) |
+| Reads in the run | Barcodes | Elapsed | Dataset (section 7) |
 |---|---|---|---|
 | ~200,000 | 24 | ~45 min | `Flongle_Demo01` |
 | ~340,000 | 24 | ~75 min | `Flongle_Demo03` |
@@ -657,7 +672,7 @@ report records the actual peak for every run.
 
 ---
 
-## 10. Run it
+## 11. Run it
 
 Preview first. This lists the steps without executing them, and catches a bad
 path or a missing database in seconds rather than minutes:
@@ -694,7 +709,7 @@ picks up where it stopped.
 
 ---
 
-## 11. What you get
+## 12. What you get
 
 ```
 my_results/
@@ -728,11 +743,8 @@ testing.
 Both reports are self-contained single files — no internet needed to view them,
 safe to email or attach to a manuscript.
 
----
+### Opening the reports
 
-## 12. Read the results report
-
-### Opening it
 
 The report is one self-contained HTML file — no internet connection, no
 external files, safe to email. Open it the way you would open any web page:
@@ -772,7 +784,11 @@ directory is readable.
 Older versions of `nano16s test` wrote there; real runs go wherever you point
 `-o`, so they were never affected.
 
-### What is in it
+---
+
+## 13. Read the results report
+
+
 
 **Read funnel.** Reads per barcode before and after filtering. What you want is
 consistency: barcodes retaining broadly similar proportions. One barcode
@@ -792,7 +808,7 @@ is recorded here.
 
 ---
 
-## 13. Read the performance report
+## 14. Read the performance report
 
 Open `performance_report.html`. This one is about the run rather than the
 biology — reach for it when something took longer than expected, or a barcode
@@ -827,7 +843,7 @@ heading to sort.
 
 ---
 
-## 14. Quality control: what gets flagged
+## 15. Quality control: what gets flagged
 
 The performance report checks every barcode against fixed thresholds and
 explains anything that fails. These are absolute, not relative to the rest of
@@ -847,7 +863,7 @@ the reads look the way full-length 16S data should.
 
 ---
 
-## 15. Use the tables downstream
+## 16. Use the tables downstream
 
 The combined tables are plain tab-separated text. Rows are taxa, columns are
 barcodes.
@@ -888,7 +904,7 @@ converting taxon names that look like dates.
 
 ---
 
-## 16. Interpreting 16S results
+## 17. Interpreting 16S results
 
 **Genus is the defensible resolution.** Species-level assignment from 16S is
 genuinely hard — many genera contain species whose 16S genes are near-identical,
@@ -940,7 +956,7 @@ report. Cite it alongside the tool versions.
 
 ---
 
-## 17. Re-running and changing settings
+## 18. Re-running and changing settings
 
 nano16s tracks what has been done. Re-running the same command finishes in
 seconds; changing a setting re-runs only what that setting affects.
@@ -973,7 +989,7 @@ discard existing work by design, which is what makes resuming possible.
 
 ---
 
-## 18. Processing several runs
+## 19. Processing several runs
 
 Give each run its own output directory and loop:
 
@@ -999,7 +1015,7 @@ Points worth noting:
 
 ---
 
-## 19. Troubleshooting
+## 20. Troubleshooting
 
 **`nano16s: command not found`**
 Run `conda activate nano16s`. Needed in every new terminal.
@@ -1030,7 +1046,7 @@ sequences from your data instead of assuming them. Budget a few minutes per
 barcode.
 
 **The run is using less of my CPU than expected**
-See the Machine use section of the performance report, and section 13.
+See the Machine use section of the performance report, and section 14.
 
 **The browser says *File not found* for a report that `ls` shows is there**
 
@@ -1116,7 +1132,7 @@ settings, which usually answers the first three questions at once.
 
 ---
 
-## 20. Reference
+## 21. Reference
 
 ### Command line
 
@@ -1180,7 +1196,7 @@ Cite the underlying tools, which do the actual work:
 See [CITATION.cff](../CITATION.cff) for nano16s itself, and record the database
 version from your report.
 
-If you use the demo datasets from section 6, cite them as well:
+If you use the demo datasets from section 7, cite them as well:
 
 - Zhang, L. & Adapa, P. D. *nano16s demo datasets: Oxford Nanopore full-length
   16S rRNA amplicon sequencing runs (Flongle, MinION, PromethION)*. Zenodo (2026).
