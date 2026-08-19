@@ -188,8 +188,17 @@ cmd_db() {
 cmd_test() {
     local demo="$ROOT/test/demo/fastq_pass"
     [[ -d "$demo" ]] || die "bundled demo data not found at $demo"
-    local out
-    out="$(mktemp -d "${TMPDIR:-/tmp}/nano16s_test_XXXXXX")"
+    # Under $HOME, not /tmp. The point of this command is that you read the
+    # report it produces, and on Ubuntu the default Firefox is a snap: a snap
+    # has its own private /tmp, so the browser reports "File not found" for a
+    # report the terminal is listing right there. /tmp is also cleared on
+    # reboot. Anything under $HOME is readable by a confined browser and
+    # survives. TMPDIR still wins where it is set deliberately, which is what
+    # CI does.
+    local out root
+    root="${TMPDIR:-$HOME}"
+    [[ -d "$root" && -w "$root" ]] || root=/tmp
+    out="$(mktemp -d "$root/nano16s_test_XXXXXX")"
     echo "Running the bundled demo dataset."
     echo "  input:  $demo"
     echo "  output: $out"
@@ -245,6 +254,39 @@ need_int --min-quality "$MIN_QUALITY"
 BARCODES="$(find "$INPUT_DIR" -maxdepth 1 -type d -name 'barcode*' | wc -l | tr -d ' ')"
 (( BARCODES > 0 )) || die "no barcode* directories inside $INPUT_DIR
        Point -d at the fastq_pass folder that contains barcode01/, barcode02/, ..."
+
+# Checked here rather than left to the merge rule. That rule does report
+# "no .fastq.gz files in ...", but only once Snakemake has built the DAG and
+# started work, only for the first barcode it happens to reach, and without
+# mentioning the plain .fastq sitting beside it -- which is what MinKNOW
+# leaves when compression is switched off, and the commonest input problem
+# after pointing -d at the wrong level.
+shopt -s nullglob
+EMPTY=()
+PLAIN=0
+for bc in "$INPUT_DIR"/barcode*/; do
+    [[ -d "$bc" ]] || continue
+    gz=( "$bc"*.fastq.gz )
+    if (( ${#gz[@]} == 0 )); then
+        EMPTY+=( "$(basename "${bc%/}")" )
+        plain=( "$bc"*.fastq )
+        (( ${#plain[@]} )) && PLAIN=1
+    fi
+done
+shopt -u nullglob
+
+if (( ${#EMPTY[@]} )); then
+    if (( PLAIN )); then
+        die "these barcode directories hold .fastq files but no .fastq.gz:
+         ${EMPTY[*]}
+       nano16s reads gzipped FASTQ. Compress them first:
+         gzip $INPUT_DIR/barcode*/*.fastq"
+    fi
+    die "these barcode directories contain no .fastq.gz files:
+         ${EMPTY[*]}
+       Every barcode directory needs at least one. If a barcode produced no
+       reads, remove its directory and run again."
+fi
 
 if [[ -z "$DB" ]]; then
     DB="$(resolve_db)" || die "no Emu database found under $DB_ROOT
