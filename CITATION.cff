@@ -1,5 +1,9 @@
 cff-version: 1.2.0
 message: "If you use nano16s, please cite it along with the underlying tools listed in the README."
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22031297
+    description: Concept DOI, resolving to the latest release
 title: "nano16s: Nanopore full-length 16S rRNA amplicon analysis for local computers"
 abstract: >-
   A Snakemake workflow for taxonomic profiling of Oxford Nanopore full-length

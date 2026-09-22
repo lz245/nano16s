@@ -139,7 +139,10 @@ jobs:
               Linux-aarch64) SFX=Linux-aarch64 ;;
               *) echo "unsupported platform: $(uname -s)-$(uname -m)" >&2; false ;;
             esac
-            curl -fsSL -o /tmp/miniforge.sh \
+            # Retries: this download returned a 504 from GitHub once and failed
+            # the macOS job on a commit whose every other check passed.
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
+              --connect-timeout 20 -o /tmp/miniforge.sh \
               "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${SFX}.sh"
             bash /tmp/miniforge.sh -b -p "$HOME/miniforge3"
             echo "$HOME/miniforge3/bin" >> "$GITHUB_PATH"
@@ -257,7 +260,10 @@ jobs:
               Linux-aarch64) SFX=Linux-aarch64 ;;
               *) echo "unsupported platform: $(uname -s)-$(uname -m)" >&2; false ;;
             esac
-            curl -fsSL -o /tmp/miniforge.sh \
+            # Retries: this download returned a 504 from GitHub once and failed
+            # the macOS job on a commit whose every other check passed.
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
+              --connect-timeout 20 -o /tmp/miniforge.sh \
               "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-${SFX}.sh"
             bash /tmp/miniforge.sh -b -p "$HOME/miniforge3"
             echo "$HOME/miniforge3/bin" >> "$GITHUB_PATH"

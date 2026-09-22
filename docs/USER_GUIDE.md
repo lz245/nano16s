@@ -1640,8 +1640,10 @@ Cite the underlying tools, which do the actual work:
 - **minimap2** — Li (2018) *Bioinformatics* 34:3094–3100
 - **Snakemake** — Mölder et al. (2021) *F1000Research* 10:33
 
-See [CITATION.cff](../CITATION.cff) for nano16s itself, and record the database
-version from your report.
+For nano16s itself, cite the Zenodo archive
+<https://doi.org/10.5281/zenodo.22031297> — that DOI always resolves to the latest release, and
+each release also has its own. See [CITATION.cff](../CITATION.cff), and record
+the database version from your report.
 
 If you use the demo datasets from section 7, cite them as well:
 

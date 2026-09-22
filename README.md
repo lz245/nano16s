@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/lz245/nano16s/actions/workflows/ci.yml/badge.svg)](https://github.com/lz245/nano16s/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22031297.svg)](https://doi.org/10.5281/zenodo.22031297)
 
 Taxonomic profiling of Oxford Nanopore full-length 16S rRNA amplicon data, on
 an ordinary computer.
@@ -296,7 +297,9 @@ If you use nano16s, please cite the underlying tools, which do the actual work:
 - **minimap2** — Li (2018) *Bioinformatics* 34:3094–3100
 - **Snakemake** — Mölder et al. (2021) *F1000Research* 10:33
 
-See [CITATION.cff](CITATION.cff) for nano16s itself.
+nano16s itself is archived on Zenodo: <https://doi.org/10.5281/zenodo.22031297> — that DOI
+always resolves to the latest release, and each release also has its own. See
+[CITATION.cff](CITATION.cff).
 
 ## License
 

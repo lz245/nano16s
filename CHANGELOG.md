@@ -10,7 +10,18 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+### Added
+- The Zenodo DOI, in the README badge row, the Citing section, `CITATION.cff`
+  and the guide. `10.5281/zenodo.22031297` resolves to the latest
+  release; each release also gets its own. Releases were being archived
+  already, but nothing in the repository said so, so a reader had no way to
+  cite the software itself.
+
 ### Fixed
+- CI retries the Miniforge download. It is fetched from GitHub's release
+  servers, which returned a 504 once and failed the macOS install job on a
+  commit whose other six checks passed. Five retries with a 20-second connect
+  timeout, in both workflows that install it.
 - The guide says which species names to distrust. On the ZymoBIOMICS mock
   community nano16s got every genus right but consistently named four species
   as a close relative (*E. coli* as *E. fergusonii*, *S. aureus* as
