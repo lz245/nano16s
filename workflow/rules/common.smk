@@ -57,4 +57,20 @@ if not SAMPLES:
     raise ValueError(f"No barcode directories found in {INPUT_DIR}")
 
 EMU_RANKS = config.get("emu_ranks", ["species", "genus", "phylum"])
+
+
+def flag(name, default=False):
+    """A config value that means yes or no, however it arrived.
+
+    From config.yaml it is a real boolean; from `--config per_read=false` on
+    the command line it is the *string* "false", and every non-empty string is
+    true in Python. Read literally, an option switched off switched itself on.
+    """
+    v = config.get(name, default)
+    if isinstance(v, str):
+        return v.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(v)
+
+
+PER_READ = flag("per_read")
 MINIMAP_RANKS = config.get("minimap2_ranks", ["species", "genus", "phylum"])

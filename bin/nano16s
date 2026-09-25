@@ -52,6 +52,7 @@ MIN_LENGTH=1000
 MAX_LENGTH=2000
 MIN_QUALITY=10
 MAX_READS=0
+PER_READ=false
 CORES=""
 DRY_RUN=""
 ASSUME_YES=""
@@ -85,6 +86,11 @@ OPTIONS
         --min-quality INT   minimum mean Phred quality (default: 10)
     -c, --cores INT         CPU cores to use (default: all but one)
     -n, --dry-run           show what would run, then stop
+        --per-read          also write one line per sequencing read, saying
+                            what that read was called and how sure Emu is
+                            (08_per_read/). Off by default: it adds no
+                            measurable time, but the reads must be classified
+                            again if a run already finished without it.
         --max-reads INT     classify at most this many reads per barcode
                             (default: 0, meaning every read that passes the
                             filter). Emu's time scales with read count; on a
@@ -355,6 +361,7 @@ while [[ $# -gt 0 ]]; do
         --max-length)     need_value "$@"; MAX_LENGTH="$2";  shift 2 ;;
         --min-quality)    need_value "$@"; MIN_QUALITY="$2"; shift 2 ;;
         --max-reads)      need_value "$@"; MAX_READS="$2";   shift 2 ;;
+        --per-read)       PER_READ=true;                     shift ;;
         -c|--cores)       need_value "$@"; CORES="$2";       shift 2 ;;
         -n|--dry-run)     DRY_RUN="--dry-run";               shift ;;
         -y|--yes)         ASSUME_YES=1;                      shift ;;
@@ -511,6 +518,7 @@ CMD=(
         "max_length=$MAX_LENGTH"
         "min_quality=$MIN_QUALITY"
         "max_reads=$MAX_READS"
+        "per_read=$PER_READ"
         "nano16s_version=$VERSION"
 )
 [[ -n "$DRY_RUN" ]] && CMD+=("$DRY_RUN")

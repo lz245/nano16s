@@ -67,6 +67,22 @@ LINEAGE_COLUMNS = {
 }
 
 
+def read_accounting(path):
+    """read_accounting.tsv -> list of per-barcode dicts, or [] if absent.
+
+    Written by the read_accounting rule. Absent only when the report is built
+    against an older output directory, in which case the section is skipped
+    rather than the report failing.
+    """
+    rows = []
+    if not path or not Path(path).exists():
+        return rows
+    with open(path) as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            rows.append(r)
+    return rows
+
+
 def read_abundance(path, rank):
     """Emu combined table -> (sample_names, {taxon: {sample: fraction}}).
 
@@ -410,6 +426,68 @@ def build_css() -> str:
             .replace("@OTHER_D@", OTHER_DARK))
 
 
+def _accounting_section(rows) -> str:
+    """Every read, per barcode, and how many taxa it found.
+
+    The combined tables answer "what is in this sample?". This answers "does it
+    add up?" -- raw, what the filter removed, what the classifier was given,
+    and how that split into classified and unclassified. Without it a reader
+    summing a column of the counts table gets a number with no stated relation
+    to the reads that went in.
+    """
+    if not rows:
+        return ""
+    head = ["Barcode", "Raw reads", "Removed by filter", "To classifier",
+            "Classified", "Unclassified", "Species", "Genera"]
+    keys = ["barcode", "raw_reads", "removed_by_filter", "reads_to_classifier",
+            "reads_classified", "reads_unclassified", "species_found", "genera_found"]
+    if any(int(r.get("subsampled_out") or 0) for r in rows):
+        head.insert(3, "Subsampled out")
+        keys.insert(3, "subsampled_out")
+
+    def cell(r, k):
+        v = r.get(k, "")
+        if k == "barcode":
+            return esc(v)
+        try:
+            return f"{int(float(v)):,}"
+        except (TypeError, ValueError):
+            return esc(v)
+
+    body = []
+    for r in rows:
+        unclassified_note = ""
+        pct = r.get("unclassified_pct", "")
+        if pct and pct != "-":
+            unclassified_note = f' title="{esc(pct)} of the reads given to the classifier"'
+        cells = []
+        for k in keys:
+            attr = unclassified_note if k == "reads_unclassified" else ""
+            cells.append(f"<td{attr}>{cell(r, k)}</td>")
+        body.append("<tr>" + "".join(cells) + "</tr>")
+
+    mismatched = [r["barcode"] for r in rows if r.get("check") != "ok"]
+    warn = ""
+    if mismatched:
+        warn = ("<p class='warn'><strong>Counts do not balance for "
+                + ", ".join(esc(b) for b in mismatched)
+                + ".</strong> Classified plus unclassified should equal the reads "
+                  "the classifier was given. Treat those barcodes with caution.</p>")
+
+    return ("<section class='panel'><h2>Every read accounted for</h2>"
+            "<p class='sub'>Raw reads, what the length and quality filter removed, and how "
+            "the rest split between classified and unclassified. Classified plus unclassified "
+            "equals the reads the classifier was given, so the table below can be reconciled "
+            "with the counts tables in <code>07_emu_combined/</code>. Species and genera are "
+            "how many distinct taxa that barcode produced.</p>"
+            + warn
+            + "<div class='scroll'><table><thead><tr>"
+            + "".join(f"<th>{h}</th>" for h in head)
+            + "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div>"
+            "<p class='sub'>Also written as <code>07_emu_combined/read_accounting.tsv</code>.</p>"
+            "</section>")
+
+
 def main():
     inp = snakemake.input           # noqa: F821
     params = snakemake.params       # noqa: F821
@@ -418,6 +496,7 @@ def main():
     rows = read_summary(inp.summary)
     samples, species = read_abundance(inp.species, "species")
     _, genus = read_abundance(inp.genus, "genus")
+    accounting = read_accounting(getattr(inp, "accounting", None))
     versions = tool_versions()
 
     # nano16s's own version, passed through from the CLI. It is absent when
@@ -557,6 +636,8 @@ def main():
         "survived adapter trimming and the length/quality filter. Percentage is retention.</p>",
         funnel_svg(rows),
         "</section>",
+
+        _accounting_section(accounting),
 
         "<section class='panel'><h2>Composition by species</h2>",
         f"<p class='sub'>Top {TOP_N} species by mean relative abundance; everything else "

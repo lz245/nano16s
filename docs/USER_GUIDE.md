@@ -879,7 +879,13 @@ my_results/
     ├── emu-combined-genus.tsv
     ├── emu-combined-genus-counts.tsv
     ├── emu-combined-phylum.tsv
-    └── emu-combined-phylum-counts.tsv
+    ├── emu-combined-phylum-counts.tsv
+    ├── read_accounting.tsv              where every read went, per barcode
+    └── per_barcode_taxa.tsv             which species, per barcode
+
+with --per-read, one more directory:
+└── 08_per_read/                  one line per sequencing read
+    └── <barcode>_per_read.tsv.gz
 ```
 
 **Relative abundance vs counts.** Abundance tables give each taxon's proportion
@@ -887,6 +893,113 @@ of the sample, summing to 1 per column. Counts tables give Emu's estimated
 number of reads. Use abundances to compare composition between samples; use
 counts for methods that expect count data, such as differential-abundance
 testing.
+
+**Reads that were not classified are in the tables too**, on a row labelled
+`Unclassified`. Emu writes that row without a name; nano16s labels it, so a
+column still sums to the reads the classifier was given and you can drop it
+deliberately rather than by accident.
+
+**`read_accounting.tsv`** is the same arithmetic laid out per barcode:
+
+| column | meaning |
+|---|---|
+| `raw_reads` | what came off the sequencer |
+| `removed_by_filter` | removed by the length and quality filter |
+| `filtered_reads` | what survived it |
+| `subsampled_out` | left out by `--max-reads`, 0 when it is off |
+| `reads_to_classifier` | what Emu was actually given |
+| `reads_classified` | placed on a species |
+| `reads_unclassified` | Emu could not place |
+| `species_found`, `genera_found` | how many distinct taxa that barcode produced |
+| `check` | `ok` when classified + unclassified equals what the classifier was given |
+
+So `raw_reads = removed_by_filter + filtered_reads`, and `filtered_reads =
+subsampled_out + reads_classified + reads_unclassified`. The report shows the
+same table under **Every read accounted for**. If a species-level total ever
+looks smaller than you expect, this is the first place to look: the reads are
+either filtered out, not classified, or on a taxon you filtered away.
+
+**`per_barcode_taxa.tsv`** answers the other half: not how many species a
+barcode found, but which. One row per barcode and species, with the reads on it
+and its share of that barcode's classified reads:
+
+```
+barcode     species              genus        reads   pct_of_classified
+barcode01   Aeromonas veronii    Aeromonas    607     61.6434%
+barcode01   Hafnia paralvei      Hafnia       243     24.6958%
+barcode01   Ewingella americana  Ewingella    28      2.8729%
+```
+
+The combined tables hold the same numbers as a grid of taxa against barcodes,
+which is the shape a heatmap wants. This is the shape a person wants: filter to
+one barcode, or sort by reads, or keep everything above 1%. The reads column
+sums exactly to that barcode's `reads_classified`, so the two tables agree to
+the read.
+
+**Already have results from an earlier version?** You do not need to re-run the
+analysis. Point nano16s at the same output directory with the same command and
+it writes the two new tables and refreshes the report — the reads are not
+re-trimmed and not re-classified:
+
+```bash
+nano16s -d /path/to/fastq_pass -o my_results -y
+```
+
+To relabel the combined tables as well, so the unclassified row is named,
+delete them first and run the same command. They are rebuilt from the
+per-barcode results already on disk:
+
+```bash
+rm my_results/07_emu_combined/emu-combined-*.tsv
+nano16s -d /path/to/fastq_pass -o my_results -y
+```
+
+On a six-barcode run that took six seconds, and the counts came out identical
+to the original run. For `nano16s batch`, use the same command with `batch` and
+the directory of runs.
+
+### One line per read: `--per-read`
+
+The tables above summarise a barcode. They cannot say *which* read supported a
+call, so a read cannot be traced back, pulled out for a second opinion, or
+counted by hand. Run with `--per-read` and each barcode also gets
+`08_per_read/<barcode>_per_read.tsv.gz`:
+
+```
+read_id                               barcode    status  taxid   species            confidence  candidates  lineage
+a2f7a15c-8ee9-4800-9dbc-5268366ec261  barcode01  C       654     Aeromonas veronii  1.0000      1           Bacteria|Pseudomonadota|...|Aeromonas veronii
+b7098d5e-5f8a-40cc-a1ac-60a9ec97d0d3  barcode01  C       324617  Aeromonas tecta    0.9972      4           Bacteria|Pseudomonadota|...|Aeromonas tecta
+```
+
+| column | meaning |
+|---|---|
+| `status` | `C` confident, `A` ambiguous, `U` matched nothing |
+| `confidence` | how much of that read's probability sits on the reported taxon |
+| `candidates` | how many taxa the read matched at all |
+| `lineage` | full lineage, domain first, pipe-separated |
+
+**Why a confidence, and not just a name.** Emu does not label reads. It spreads
+each read across the references it matched and estimates abundances from the
+whole distribution. This file reports the taxon holding most of a read's
+probability, with that probability beside it — so `1.0000` is one clear match,
+while `0.55` means the read fits two references nearly equally and the species
+name is close to a coin toss. Reads below 0.9 are marked `A` rather than
+presented as decided. Every read the classifier saw has a line, including ones
+that matched nothing, so the line count equals `reads_to_classifier` in
+`read_accounting.tsv`.
+
+Pull out one organism's reads:
+
+```bash
+zcat 08_per_read/barcode01_per_read.tsv.gz | awk -F'\t' '$5 == "Aeromonas veronii"'
+```
+
+**Cost.** No measurable extra time: Emu does the same work and writes one more
+file. That file is reads × taxa and can reach gigabytes for one deep barcode,
+so nano16s converts it to the compact table above and deletes it. The result is
+roughly 30 bytes per read. It is off by default for one reason: Emu has to be
+asked for the distribution while it classifies, so a run that already finished
+without `--per-read` has to classify again to produce it.
 
 ### Opening your results
 
@@ -1588,6 +1701,7 @@ settings, which usually answers the first three questions at once.
 | `--min-quality` | `10` | minimum mean Phred quality |
 | `-c, --cores` | all but one | CPU cores to use |
 | `-n, --dry-run` | | list the steps and stop |
+| `--per-read` | off | also write one line per read: what it was called, how sure, full lineage |
 | `-y, --yes` | | skip confirmation prompts |
 | `-h, --help` | | full help |
 

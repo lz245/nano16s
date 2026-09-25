@@ -38,6 +38,16 @@ min_quality: 10          # Phred; ~Q10 is a reasonable floor for modern ONT
 # judgement about your samples, not ours, which is why this is off unless you
 # ask for it. Compare one barcode both ways before trusting it for a whole run.
 max_reads: 0
+
+# One line per sequencing read: what it was called, its confidence, and the
+# full lineage, in 08_per_read/. The abundance tables cannot say which read
+# supported which call, so a read cannot be traced, pulled out for a second
+# opinion, or counted by hand. Off by default because Emu has to be asked for
+# its read-by-taxon distribution, which is reads x taxa and can reach
+# gigabytes for one deep barcode -- nano16s converts it and deletes it, but a
+# run that already finished has to classify again to produce it. It costs no
+# measurable classification time.
+per_read: false
 # Fixed, so the same input always yields the same subset. Change it only to
 # check that a result is not an artefact of one particular draw.
 subsample_seed: 1

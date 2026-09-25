@@ -25,7 +25,11 @@ def all_targets():
         f"{OUTPUT_DIR}/performance_report.html",
         f"{OUTPUT_DIR}/performance_summary.csv",
         f"{OUTPUT_DIR}/performance.json",
+        f"{OUTPUT_DIR}/07_emu_combined/read_accounting.tsv",
+        f"{OUTPUT_DIR}/07_emu_combined/per_barcode_taxa.tsv",
     ]
+    if PER_READ:
+        targets += [f"{OUTPUT_DIR}/08_per_read/{s}_per_read.tsv.gz" for s in SAMPLES]
     for rank in EMU_RANKS:
         targets.append(f"{OUTPUT_DIR}/07_emu_combined/emu-combined-{rank}.tsv")
         targets.append(f"{OUTPUT_DIR}/07_emu_combined/emu-combined-{rank}-counts.tsv")

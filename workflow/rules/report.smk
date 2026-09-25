@@ -18,6 +18,7 @@ rule report:
         species = f"{OUTPUT_DIR}/07_emu_combined/emu-combined-species.tsv",
         genus   = f"{OUTPUT_DIR}/07_emu_combined/emu-combined-genus.tsv",
         phylum  = f"{OUTPUT_DIR}/07_emu_combined/emu-combined-phylum.tsv",
+        accounting = f"{OUTPUT_DIR}/07_emu_combined/read_accounting.tsv",
     output:
         f"{OUTPUT_DIR}/nano16s_report.html"
     params:

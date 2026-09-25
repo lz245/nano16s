@@ -6,6 +6,8 @@
 # Requires from config: emu_db
 # =============================================================================
 
+import os
+
 def classifier_input(wildcards):
     """The reads Emu classifies: subsampled when max_reads is set, else filtered.
 
@@ -26,6 +28,12 @@ rule emu:
     params:
         db     = config["emu_db"],
         outdir = f"{OUTPUT_DIR}/06_emu_output/{{sample}}",
+        # --keep-read-assignments makes Emu write its read-by-taxon
+        # distribution, which rule per_read turns into one line per read. It
+        # costs no measurable time (Emu does the same work either way) but the
+        # file is reads x taxa and can reach gigabytes for one deep barcode, so
+        # it is written only when asked for, and deleted once converted.
+        extra  = "--keep-read-assignments" if PER_READ else "",
     benchmark:
         f"{OUTPUT_DIR}/benchmarks/emu/{{sample}}.tsv"
     threads:
@@ -72,12 +80,14 @@ PY
         # emu_combine then read it as an extra sample: 32 columns in a
         # 24-barcode table, each duplicate a complete second abundance profile
         # that disagreed with the real one, with nothing to say so.
-        rm -f {params.outdir}/*_rel-abundance*.tsv {params.outdir}/*_counts*.tsv
+        rm -f {params.outdir}/*_rel-abundance*.tsv {params.outdir}/*_counts*.tsv \
+               {params.outdir}/*_read-assignment-distributions.tsv
 
         emu abundance \
             "{input}" \
             --db "{params.db}" \
             --keep-counts \
+            {params.extra} \
             --output-dir "{params.outdir}" \
             --threads {threads}
 
@@ -154,6 +164,7 @@ rule emu_combine:
         emu_dir     = f"{OUTPUT_DIR}/06_emu_output",
         combined_dir = f"{OUTPUT_DIR}/07_emu_combined",
         db          = config["emu_db"],
+        label_script = os.path.join(workflow.basedir, "scripts", "label_unclassified.py"),
     shell:
         """
         mkdir -p "{params.combined_dir}"
@@ -238,4 +249,89 @@ rule emu_combine:
             echo "     completed work is kept, so it finishes quickly." >&2
             exit 1
         fi
+
+        # Emu leaves one row with every taxonomy field empty: the reads it
+        # could not place. Unlabelled, it reads as a blank line, so summing a
+        # column silently includes it and filtering out unnamed rows silently
+        # drops it. Name it, and the table adds up in plain sight.
+        python3 "{params.label_script}" {wildcards.rank} "{output.rel}" "{output.cnts}"
+        """
+
+
+# ---------------------------------------------------------------------------
+# Where every read went, per barcode, and how many taxa it found.
+#
+# The combined tables say what is in each sample; this says whether it adds up.
+# One row per barcode: raw, removed by the filter, given to the classifier,
+# classified, unclassified, and the number of species and genera found. The
+# `check` column is the arithmetic a reader would otherwise have to do.
+#
+# per_barcode_taxa.tsv answers the other half: which species, not just how
+# many. One row per barcode and species, with reads and share. The combined
+# tables hold the same numbers as a grid, which suits a heatmap; this suits a
+# person filtering one barcode, or a spreadsheet.
+# ---------------------------------------------------------------------------
+rule read_accounting:
+    input:
+        rel = expand(
+            f"{OUTPUT_DIR}/06_emu_output/{{sample}}/{{sample}}_rel-abundance.tsv",
+            sample=SAMPLES,
+        ),
+        summary = f"{OUTPUT_DIR}/preprocessing_summary.csv",
+    output:
+        accounting = f"{OUTPUT_DIR}/07_emu_combined/read_accounting.tsv",
+        taxa       = f"{OUTPUT_DIR}/07_emu_combined/per_barcode_taxa.tsv",
+    params:
+        emu_dir = f"{OUTPUT_DIR}/06_emu_output",
+        script  = os.path.join(workflow.basedir, "scripts", "read_accounting.py"),
+    shell:
+        """
+        python3 "{params.script}" "{params.emu_dir}" "{input.summary}" \
+            "{output.accounting}" "{output.taxa}"
+        """
+
+
+# ---------------------------------------------------------------------------
+# One line per sequencing read: what it was called, and how sure Emu is.
+#
+# Only built with --per-read. Emu is probabilistic -- it spreads each read over
+# the references it matched rather than labelling it -- so this reports the
+# taxon holding most of that read's probability, with the probability itself,
+# so an ambiguous read is visible as ambiguous rather than silently rounded to
+# a species name.
+#
+# The distribution Emu writes is reads x taxa and can reach gigabytes for one
+# barcode. It is converted here and then removed: what remains is a compact
+# gzipped table, about a hundred bytes per read.
+# ---------------------------------------------------------------------------
+rule per_read:
+    input:
+        abundance = f"{OUTPUT_DIR}/06_emu_output/{{sample}}/{{sample}}_rel-abundance.tsv",
+        reads     = classifier_input,
+    output:
+        f"{OUTPUT_DIR}/08_per_read/{{sample}}_per_read.tsv.gz"
+    params:
+        db     = config["emu_db"],
+        outdir = f"{OUTPUT_DIR}/06_emu_output/{{sample}}",
+        script = os.path.join(workflow.basedir, "scripts", "per_read_calls.py"),
+    shell:
+        """
+        # Emu names the file after the input, so find it rather than guess.
+        shopt -s nullglob
+        DIST=( {params.outdir}/*_read-assignment-distributions.tsv )
+        if [ "${{#DIST[@]}}" -eq 0 ]; then
+            echo "ERROR: no read assignments for {wildcards.sample}" >&2
+            echo "  Emu writes them only when nano16s is run with --per-read." >&2
+            echo "  If this run already classified without it, the reads must be" >&2
+            echo "  classified again: delete {params.outdir} and re-run with --per-read." >&2
+            exit 1
+        fi
+
+        python3 "{params.script}" "${{DIST[0]}}" "{params.db}" "{input.reads}" \
+            "{wildcards.sample}" "{output}"
+
+        # Converted, so the matrix has served its purpose. Removing it here
+        # rather than declaring it temp() keeps the emu rule's output list --
+        # and so every existing output directory -- unchanged.
+        rm -f "${{DIST[0]}}"
         """

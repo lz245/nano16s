@@ -10,6 +10,40 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+### Added
+- `--per-read` writes one line per sequencing read to `08_per_read/`: what
+  that read was called, how much of its probability sits on that call, how many
+  taxa it matched, and the full lineage. The abundance tables cannot say which
+  read supported which call, so a read could not be traced back, pulled out for
+  a second opinion, or counted by hand. Emu does not label reads — it spreads
+  each read over the references it matched — so the confidence is reported
+  beside the name and reads below 0.9 are marked ambiguous rather than
+  presented as decided. Every read the classifier saw has a line, including
+  those that matched nothing, so the count reconciles with
+  `read_accounting.tsv`. Off by default: it costs no measurable time, but Emu's
+  read-by-taxon distribution is reads x taxa and reaches gigabytes for a deep
+  barcode (nano16s converts it and deletes it), and a finished run has to
+  classify again to produce it.
+- `07_emu_combined/read_accounting.tsv`, and the same table in the report as
+  "Every read accounted for": per barcode, the raw reads, what the filter
+  removed, what `--max-reads` left out, what the classifier was given, and how
+  that split into classified and unclassified, with the number of species and
+  genera found. Until now the tables said what was in a sample but nothing said
+  whether the numbers added up, so anyone reconciling a species total against
+  their read count had to work it out themselves. A `check` column states it
+  outright.
+- `07_emu_combined/per_barcode_taxa.tsv`: one row per barcode and species,
+  with the reads on it and its share of that barcode. The combined tables hold
+  the same numbers as a grid of taxa against barcodes, which suits a heatmap;
+  this suits filtering to one barcode or sorting by abundance. Emu's counts are
+  estimates and therefore fractional, so they are rounded by largest remainder:
+  the column sums exactly to that barcode's classified reads rather than
+  landing a read or two away from it.
+- Emu's unnamed row is labelled `Unclassified` in every combined table. Emu
+  writes the reads it could not place into a row with no taxonomy at all, which
+  reads as a blank line: summing a column silently included it, and filtering
+  out unnamed rows silently dropped it. The counts are untouched.
+
 ### Fixed
 - The guide says which species names to distrust. On the ZymoBIOMICS mock
   community nano16s got every genus right but consistently named four species
