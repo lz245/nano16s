@@ -56,7 +56,7 @@ def summary_csv(path, barcodes):
             w.writerow([bc, float(raw), 0, 0, 0, float(filt), 0, 0, 0])
 
 
-def run_accounting(tmp_path, barcodes, tables, want_taxa=False):
+def run_accounting(tmp_path, barcodes, tables, want_taxa=False, max_reads=0):
     emu_dir = tmp_path / "06_emu_output"
     for bc, rows in tables.items():
         emu_table(emu_dir / bc / f"{bc}_rel-abundance.tsv", rows)
@@ -65,7 +65,8 @@ def run_accounting(tmp_path, barcodes, tables, want_taxa=False):
     out = tmp_path / "read_accounting.tsv"
     taxa = tmp_path / "per_barcode_taxa.tsv"
     subprocess.run([sys.executable, str(SCRIPTS / "read_accounting.py"),
-                    str(emu_dir), str(summary), str(out), str(taxa)], check=True,
+                    str(emu_dir), str(summary), str(out),
+                    str(taxa), "--max-reads", str(max_reads)], check=True,
                    capture_output=True, text=True)
     with out.open() as fh:
         acct = {r["barcode"]: r for r in csv.DictReader(fh, delimiter="\t")}
@@ -123,13 +124,70 @@ class TestCounting:
             {"barcode01": (5000, 4000)},
             {"barcode01": [("562", "Escherichia coli", "Escherichia", 990),
                            ("unmapped", "", "", 10)]},
+            max_reads=1000,
         )
         r = rows["barcode01"]
         assert int(r["reads_to_classifier"]) == 1000
         assert int(r["subsampled_out"]) == 3000
+        assert r["check"] == "ok"
         assert int(r["filtered_reads"]) == (int(r["reads_classified"])
                                             + int(r["reads_unclassified"])
                                             + int(r["subsampled_out"]))
+
+    def test_reads_lost_between_the_filter_and_the_classifier_are_flagged(self, tmp_path):
+        """REGRESSION: `check` used to compare Emu's totals with a number
+        derived from those same totals, so it could not fail. 600 reads that
+        never reached the classifier were reported as `subsampled_out`, as
+        though a subsample nobody had asked for, and the row said `ok`."""
+        rows = run_accounting(
+            tmp_path,
+            {"barcode01": (1200, 1000)},
+            {"barcode01": [("562", "Escherichia coli", "Escherichia", 300),
+                           ("unmapped", "", "", 100)]},
+        )
+        r = rows["barcode01"]
+        assert r["check"].startswith("MISMATCH")
+        assert "+600" in r["check"]
+        # and the loss is not dressed up as subsampling
+        assert int(r["subsampled_out"]) == 0
+
+    def test_subsampled_out_is_only_what_max_reads_removed(self, tmp_path):
+        rows = run_accounting(
+            tmp_path,
+            {"barcode01": (1200, 1000)},
+            {"barcode01": [("562", "Escherichia coli", "Escherichia", 300),
+                           ("unmapped", "", "", 100)]},
+            max_reads=400,
+        )
+        r = rows["barcode01"]
+        assert int(r["subsampled_out"]) == 600
+        assert r["check"] == "ok"
+
+    def test_one_read_of_rounding_is_not_a_mismatch(self, tmp_path):
+        """Emu's counts are estimates, so their total can land a read either
+        side of the true input."""
+        rows = run_accounting(
+            tmp_path,
+            {"barcode01": (1000, 900)},
+            {"barcode01": [("562", "Escherichia coli", "Escherichia", 899.6)]},
+        )
+        assert rows["barcode01"]["check"] == "ok"
+
+    def test_a_barcode_whose_classifier_output_is_missing_is_flagged(self, tmp_path):
+        """Reads passed the filter and nothing came back. Previously this read
+        as a barcode subsampled down to nothing, and said `ok`."""
+        emu_dir = tmp_path / "06_emu_output"
+        (emu_dir / "barcode01").mkdir(parents=True)
+        summary = tmp_path / "preprocessing_summary.csv"
+        summary_csv(summary, {"barcode01": (1000, 900)})
+        out = tmp_path / "read_accounting.tsv"
+        subprocess.run([sys.executable, str(SCRIPTS / "read_accounting.py"),
+                        str(emu_dir), str(summary), str(out)], check=True,
+                       capture_output=True, text=True)
+        with out.open() as fh:
+            r = next(csv.DictReader(fh, delimiter="\t"))
+        assert r["check"].startswith("MISMATCH")
+        assert int(r["subsampled_out"]) == 0
 
     def test_empty_barcode_is_reported_as_zero(self, tmp_path):
         """A barcode with no reads is a fact about the run, not an omission."""

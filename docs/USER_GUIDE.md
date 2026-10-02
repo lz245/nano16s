@@ -922,7 +922,7 @@ deliberately rather than by accident.
 | `reads_classified` | placed on a species |
 | `reads_unclassified` | Emu could not place |
 | `species_found`, `genera_found` | how many distinct taxa that barcode produced |
-| `check` | `ok` when classified + unclassified equals what the classifier was given |
+| `check` | `ok` when the reads Emu accounted for match the reads it should have been given — `filtered_reads` less `subsampled_out`. A difference of more than one read, which is rounding, is reported as `MISMATCH: +N reads` and means that many reads went missing between the filter and the classifier. The two sides come from different places on purpose: the expected count from the filter and your `--max-reads` setting, the actual from Emu's own output |
 
 So `raw_reads = removed_by_filter + filtered_reads`, and `filtered_reads =
 subsampled_out + reads_classified + reads_unclassified`. The report shows the

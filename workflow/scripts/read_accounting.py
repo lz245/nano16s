@@ -2,7 +2,7 @@
 """Per-barcode read accounting: where every read went, and what it found.
 
     read_accounting.py <emu_output_dir> <preprocessing_summary.csv> \
-        <read_accounting.tsv> [<per_barcode_taxa.tsv>]
+        <read_accounting.tsv> [<per_barcode_taxa.tsv>] [--max-reads N]
 
 The tables the pipeline already writes answer "what is in this sample?" but not
 "does this add up?". The counts table holds one row per taxon, plus a row Emu
@@ -14,12 +14,22 @@ This writes one row per barcode:
 
     raw -> filtered -> given to the classifier -> classified + unclassified
 
-with the number of species and genera found. `check` is `ok` when
-classified + unclassified equals the reads the classifier was given, which is
-the arithmetic a reader should not have to do themselves.
+with the number of species and genera found. `check` is `ok` when the reads
+Emu accounted for match the reads it should have been given -- the filtered
+count, less whatever --max-reads left out -- which is the arithmetic a reader
+should not have to do themselves.
 
-With --max-reads, the classifier is given fewer reads than passed the filter;
-`subsampled_out` is that difference, so the chain still balances.
+The two sides come from different places on purpose. The reads the classifier
+*should* have seen are read from the preprocessing summary and the --max-reads
+setting; the reads it *did* see are Emu's own classified plus unclassified
+totals. An earlier version derived both from Emu, so `check` compared a number
+with itself and could not fail: 600 reads lost between the filter and the
+classifier were reported as `subsampled_out` -- as though a subsample nobody
+had asked for -- and the row still said `ok`.
+
+`subsampled_out` is therefore what --max-reads removed, and nothing else. A
+difference the setting does not explain shows up in `check`, with the missing
+count, and the columns visibly fail to add up.
 
 The second table answers the other half of the question: not how many species a
 barcode found, but which. One row per barcode and species, with its read count
@@ -85,10 +95,19 @@ def count_file(path):
 
 
 def main():
-    if len(sys.argv) not in (4, 5):
+    argv = sys.argv[1:]
+    max_reads = 0
+    if "--max-reads" in argv:
+        i = argv.index("--max-reads")
+        try:
+            max_reads = int(float(argv[i + 1]))
+        except (IndexError, ValueError):
+            sys.exit("--max-reads needs a whole number")
+        del argv[i:i + 2]
+    if len(argv) not in (3, 4):
         sys.exit(__doc__)
-    emu_dir, summary_csv, out_tsv = sys.argv[1:4]
-    taxa_tsv = sys.argv[4] if len(sys.argv) == 5 else None
+    emu_dir, summary_csv, out_tsv = argv[:3]
+    taxa_tsv = argv[3] if len(argv) == 4 else None
 
     pre = {}
     if os.path.exists(summary_csv):
@@ -127,13 +146,20 @@ def main():
                 return 0
 
         raw, filtered = num("raw_reads"), num("filtered_reads")
+        # What Emu saw, from Emu.
         to_classifier = int(round(classified + unclassified))
+        # What it should have seen, from the filter and the setting.
+        expected = min(filtered, max_reads) if max_reads > 0 else filtered
+        # Emu's counts are estimates and therefore fractional, so their total
+        # can land a read either side of the true input. One read is rounding;
+        # more than that is reads going missing.
+        short = expected - to_classifier
         rows.append({
             "barcode": barcode,
             "raw_reads": raw,
             "removed_by_filter": raw - filtered,
             "filtered_reads": filtered,
-            "subsampled_out": max(0, filtered - to_classifier),
+            "subsampled_out": max(0, filtered - expected),
             "reads_to_classifier": to_classifier,
             "reads_classified": int(round(classified)),
             "reads_unclassified": int(round(unclassified)),
@@ -141,8 +167,7 @@ def main():
                                  if to_classifier else "-"),
             "species_found": n_species,
             "genera_found": n_genera,
-            "check": "ok" if to_classifier == int(round(classified)) + int(round(unclassified))
-                     else "MISMATCH",
+            "check": "ok" if abs(short) <= 1 else f"MISMATCH: {short:+d} reads",
         })
 
     os.makedirs(os.path.dirname(out_tsv) or ".", exist_ok=True)

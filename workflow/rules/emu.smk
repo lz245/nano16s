@@ -282,12 +282,16 @@ rule read_accounting:
         accounting = f"{OUTPUT_DIR}/07_emu_combined/read_accounting.tsv",
         taxa       = f"{OUTPUT_DIR}/07_emu_combined/per_barcode_taxa.tsv",
     params:
-        emu_dir = f"{OUTPUT_DIR}/06_emu_output",
-        script  = os.path.join(workflow.basedir, "scripts", "read_accounting.py"),
+        emu_dir   = f"{OUTPUT_DIR}/06_emu_output",
+        script    = os.path.join(workflow.basedir, "scripts", "read_accounting.py"),
+        # Passed in, not inferred: the check below is only worth having if the
+        # reads the classifier should have seen come from somewhere other than
+        # the classifier's own output.
+        max_reads = config.get("max_reads", 0),
     shell:
         """
         python3 "{params.script}" "{params.emu_dir}" "{input.summary}" \
-            "{output.accounting}" "{output.taxa}"
+            "{output.accounting}" "{output.taxa}" --max-reads {params.max_reads}
         """
 
 
