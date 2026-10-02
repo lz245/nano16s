@@ -10,6 +10,20 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+### Fixed
+- `check` in `read_accounting.tsv` can now fail. It compared the reads Emu
+  accounted for against a number derived from those same totals, so the two
+  sides were the same number and the column could only ever say `ok`. Reads
+  lost between the filter and the classifier were reported as
+  `subsampled_out` — as though a subsample nobody had asked for — and the row
+  still passed: a barcode whose 1,000 filtered reads reached Emu as 400 read as
+  600 deliberately set aside. The expected count now comes from the
+  preprocessing summary and the `--max-reads` setting, the actual from Emu, so
+  `subsampled_out` is what the setting removed and nothing else, and anything
+  else appears as `MISMATCH: +N reads` with the columns visibly failing to add
+  up. One read either way is still `ok`, since Emu's counts are estimates and
+  their total can land a read either side of the true input.
+
 ## [1.2.1] — 2026-10-02
 
 ### Added
