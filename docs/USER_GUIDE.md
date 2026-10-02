@@ -1005,6 +1005,26 @@ Pull out one organism's reads:
 zcat 08_per_read/barcode01_per_read.tsv.gz | awk -F'\t' '$5 == "Aeromonas veronii"'
 ```
 
+**Do not count this file to get abundances.** Counting lines per species and
+counting Emu's estimate are two different questions, and they give different
+answers. This file reports the one taxon holding most of each read, so a
+species that is never any read's best match gets no lines at all — while Emu
+still credits it the probability those reads spread onto it. On one real
+barcode of `Flongle_Demo01`:
+
+| species | Emu's estimate | lines in this file |
+|---|---|---|
+| *Escherichia fergusonii* | 2,520 | 2,566 |
+| *Escherichia marmotae* | 720 | 775 |
+| *Proteus mirabilis* | 217 | 217 |
+| *Shigella sonnei* | **132** | **30** |
+
+The totals agree exactly — 3,588 either way — but *S. sonnei* is a quarter of
+its estimate here, and the difference has gone to the two *Escherichia*. That
+is the expected behaviour of a best-match call against a probability estimate,
+not an error in either. Use `07_emu_combined/` for abundances, and this file to
+look at individual reads.
+
 **Cost.** No measurable extra time: Emu does the same work and writes one more
 file. That file is reads × taxa and can reach gigabytes for one deep barcode,
 so nano16s converts it to the compact table above and deletes it. The result is
