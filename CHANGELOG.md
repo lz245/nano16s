@@ -10,6 +10,16 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+### Changed
+- The guide says not to count `08_per_read/` to get abundances, and shows by
+  how much it differs. The file reports the one taxon holding most of each
+  read, so a species that is never any read's best match gets no lines while
+  Emu still credits it the probability those reads spread onto it. On a real
+  barcode the totals agree exactly, 3,588 either way, while *Shigella sonnei*
+  has 30 lines against an estimate of 132. The section already explained the
+  per-read confidence and then showed how to filter the file by species, which
+  invites exactly the count that does not mean what it looks like.
+
 ## [1.2.1] — 2026-10-02
 
 ### Added
