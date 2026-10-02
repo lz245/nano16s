@@ -141,13 +141,22 @@ PY
             exit 0
         fi
 
+        # mktemp, not a name built from the barcode. Porechop_ABI writes its
+        # k-mer counts to ./tmp relative to the current directory, so each job
+        # needs one of its own -- and the name was shared by every job for that
+        # barcode anywhere on the machine. Two nano16s runs at once, which is
+        # two flow cells or a batch beside a single sample, both have a
+        # barcode01: the first to finish ran the trap below and deleted the
+        # directory the second was still working in, which failed with
+        # "COULD NOT OPEN FILE ./tmp/temp_approx_kmer_count_sup_2.start" from
+        # a program the user never called. Both runs died, several barcodes
+        # each.
         TMPDIR="${{TMPDIR:-/tmp}}"
-        WORK="$TMPDIR/porechop_tmp_{wildcards.sample}"
+        WORK="$(mktemp -d "$TMPDIR/porechop_{wildcards.sample}_XXXXXX")"
         # Cleared on the way out whether or not Porechop succeeded. The removal
         # used to sit after the command under `set -e`, so every failed job left
         # its working directory behind in TMPDIR.
         trap 'rm -rf "$WORK"' EXIT
-        mkdir -p "$WORK"
         cd "$WORK"
         porechop_abi -abi \\
             -i "{input}" \\

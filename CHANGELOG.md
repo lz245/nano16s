@@ -10,6 +10,23 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+### Fixed
+- Two nano16s runs can run at the same time. Porechop_ABI writes its k-mer
+  counts to `./tmp` relative to the current directory, so each job gets a
+  working directory of its own — but that directory was named
+  `porechop_tmp_<barcode>` under `TMPDIR`, which is the same path for every job
+  with that barcode anywhere on the machine. Two runs at once is two flow
+  cells, or a batch beside a single sample, and both have a `barcode01`: the
+  first job to finish ran its cleanup trap and deleted the directory the other
+  was still working in. Both runs then failed, several barcodes each, reporting
+  `COULD NOT OPEN FILE ./tmp/temp_approx_kmer_count_sup_2.start` from a program
+  the user never called. Reproduced with two simultaneous runs of the bundled
+  demo — six and eight failed jobs, both runs exiting non-zero — and after the
+  fix the same two runs both complete with no failed jobs and nothing left in
+  `TMPDIR`. The directory now comes from `mktemp -d`, so it is unique per job.
+  `test/test_temp_dirs.py` scans every rule for the pattern, since the next
+  rule to need scratch space will reach for the same shape.
+
 ## [1.2.1] — 2026-10-02
 
 ### Added
