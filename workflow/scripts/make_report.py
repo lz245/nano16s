@@ -534,10 +534,35 @@ def main():
             warnings.append(("bad", f"<strong>{esc(r['barcode'])}</strong> had no reads "
                                     f"at all. Check the barcode was used in this run."))
         elif r["filtered"] == 0:
+            # Which setting to go and look at. The filter applies a length
+            # window and a quality floor, and this message named only the
+            # window -- so a run that lost everything to --min-quality sent the
+            # reader to change the setting that was not the problem. The raw
+            # medians are already in the summary, so in the usual case the
+            # message can say which of the two it was.
+            def as_num(v):
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return None
+
+            q, ln = as_num(r["raw_q"]), as_num(r["raw_len"])
+            min_q, min_l, max_l = (as_num(params.min_quality),
+                                   as_num(params.min_length),
+                                   as_num(params.max_length))
+            if q is not None and min_q is not None and q < min_q:
+                why = (f"Its median raw quality is Q{q:.1f}, below the "
+                       f"Q&ge;{params.min_quality} floor.")
+            elif (ln is not None and min_l is not None and max_l is not None
+                    and not min_l <= ln <= max_l):
+                why = (f"Its median raw read is {ln:,.0f} bp, outside the "
+                       f"{params.min_length}-{params.max_length} bp window.")
+            else:
+                why = (f"Its reads are probably outside the "
+                       f"{params.min_length}-{params.max_length} bp window, or "
+                       f"below Q&ge;{params.min_quality}.")
             warnings.append(("bad", f"<strong>{esc(r['barcode'])}</strong> lost every read "
-                                    f"during filtering ({r['raw']:,} raw). Its reads are "
-                                    f"probably outside the "
-                                    f"{params.min_length}-{params.max_length} bp window."))
+                                    f"during filtering ({r['raw']:,} raw). {why}"))
         else:
             pct = 100.0 * r["filtered"] / r["raw"]
             if pct < 25:
