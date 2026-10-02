@@ -153,6 +153,29 @@ need_value() {
     [[ $# -ge 2 && -n "${2:-}" ]] || die "$1 requires a value."
 }
 
+# Refused here rather than left to surface mid-run. Emu builds its minimap2
+# command as one string and splits it on whitespace (generate_alignments), and
+# Porechop_ABI does the same for its approx_counter (abinitio.py,
+# execApproxCounter) -- so a path with a space in it arrives as two arguments.
+# The run then dies after merge and NanoStat have already finished, reporting
+# "failed to open file" for half a path, or a CalledProcessError naming a
+# binary the user has never invoked. Neither message mentions the space.
+no_space() {
+    case "$2" in
+        *[[:space:]]*)
+            die "$1 contains a space:
+         $2
+       Two of the tools nano16s runs cannot take a path with a space in it:
+       Emu, when it calls minimap2, and Porechop_ABI, when it searches for
+       adapters. Both split their own command lines on whitespace, so the run
+       would fail partway through blaming a program you did not call.
+       A symlink without a space works, and the results still land in the real
+       directory:
+         ln -s '$2' \"\$HOME/nano16s_path\"
+       then use \$HOME/nano16s_path instead." ;;
+    esac
+}
+
 detect_cores() {
     local n
     n="$( { command -v nproc >/dev/null && nproc; } \
@@ -253,6 +276,12 @@ cmd_test() {
         local root
         root="${TMPDIR:-$HOME}"
         [[ -d "$root" && -w "$root" ]] || root=/tmp
+        # A home directory with a space in it -- "/Users/Jane Doe" -- would
+        # otherwise make the one command that proves the install works fail
+        # for a reason that has nothing to do with the install.
+        case "$root" in
+            *[[:space:]]*) root=/tmp ;;
+        esac
         out="$(mktemp -d "$root/nano16s_test_XXXXXX")"
     fi
 
@@ -285,6 +314,8 @@ cmd_batch() {
     [[ -n "$parent" ]] || die "batch needs -d, the directory that holds your runs."
     [[ -d "$parent" ]] || die "input directory not found: $parent"
     [[ -n "$out"    ]] || die "batch needs -o, the directory to write results into."
+    no_space -d/--input-dir  "$parent"
+    no_space -o/--output-dir "$out"
     parent="$(cd "$parent" && pwd)"
 
     # A fastq_pass given directly is one run, not a batch. Say so, rather than
@@ -402,6 +433,8 @@ done
 # --- validate ------------------------------------------------------------------
 [[ -n "$INPUT_DIR" ]] || die "-d/--input-dir is required. Run 'nano16s --help'."
 [[ -d "$INPUT_DIR" ]] || die "input directory not found: $INPUT_DIR"
+no_space -d/--input-dir  "$INPUT_DIR"
+no_space -o/--output-dir "$OUTPUT_DIR"
 
 # Checked here rather than left to surface as a Chopper or Snakemake error
 # partway through a run that has already spent minutes on Porechop.
@@ -464,6 +497,7 @@ if [[ -z "$DB" ]]; then
        Or point at an existing one with --db /path/to/db"
 fi
 [[ -d "$DB" ]] || die "database directory not found: $DB"
+no_space --db "$DB"
 [[ -f "$DB/taxonomy.tsv" && -f "$DB/species_taxid.fasta" ]] || \
     die "$DB does not look like an Emu database (expected taxonomy.tsv and species_taxid.fasta)"
 

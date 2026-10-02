@@ -1479,6 +1479,23 @@ contains `barcode01/`. Find it with
 That barcode directory is empty, or holds uncompressed `.fastq`. Compress them,
 or remove the directory if the barcode genuinely produced nothing.
 
+**`-d/--input-dir contains a space`** (or `-o`, or `--db`)
+
+A path with a space in it anywhere — `~/My Runs/june`, `/mnt/c/Users/Jane
+Doe/data` — is refused before the run starts. Two of the tools nano16s calls
+build their command lines as a single string and split them on whitespace: Emu
+when it runs minimap2, and Porechop_ABI when it searches for adapters. Half the
+path reaches them as a second argument.
+
+Rename the directory, or point nano16s at a symlink without a space. The
+results still land in the real directory:
+
+```bash
+ln -s '/mnt/c/Users/Jane Doe/data/fastq_pass' ~/run_in
+ln -s '/mnt/c/Users/Jane Doe/results'         ~/run_out
+nano16s -d ~/run_in -o ~/run_out
+```
+
 ### During the run
 
 **The run stopped partway**

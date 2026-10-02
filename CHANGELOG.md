@@ -10,6 +10,20 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+### Fixed
+- A path containing a space is refused before the run starts, with the reason
+  and a symlink that works. Emu builds its minimap2 command as one string and
+  splits it on whitespace, and Porechop_ABI does the same for its adapter
+  search, so half a path arrived as a second argument. Nothing said so: every
+  barcode was merged, NanoStat ran over all of them and the adapters were
+  trimmed, and the run then stopped with `failed to open file 'probe/out'` or a
+  `CalledProcessError` naming a binary the user had never invoked. Checked for
+  `-d`, `-o`, `--db` and both batch directories; `nano16s test` also keeps its
+  own output out of a home directory that has a space in it, so the command
+  that proves an install works cannot fail for an unrelated reason. Verified
+  that a space-free symlink to a directory whose real path has a space
+  completes a full run and writes its results into the real directory.
+
 ## [1.2.1] — 2026-10-02
 
 ### Added
