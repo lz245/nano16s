@@ -10,6 +10,17 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+### Added
+- CI runs the pipeline on every pull request, not only on the weekly schedule.
+  The unit, lint and install jobs never execute a rule — install builds the
+  DAG and stops — so nothing on a pull request answered the one question a
+  pipeline change raises: does it still run. A rule whose body no longer works
+  could merge green and be found days later by the scheduled job, or by a
+  user. One platform and the bundled demo, including a database built from
+  NCBI, which takes seven to ten minutes — the pipeline itself is nearly all
+  of it, and varies with the runner. The weekly job is unchanged: two platforms, which is what catches
+  a dependency moving underneath us.
+
 ## [1.2.2] — 2026-10-05
 
 ### Fixed
