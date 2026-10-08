@@ -1374,7 +1374,7 @@ that is the whole job — three runs, three sets of tables and reports, one
 command. It prints what it found before starting:
 
 ```
-nano16s 1.2.0 — batch of 3 run(s)
+nano16s 1.2.2 — batch of 3 run(s)
   input     /home/you/data
   output    /home/you/results
   runs      Flongle_Demo01 Flongle_Demo02 MinION_Demo01
