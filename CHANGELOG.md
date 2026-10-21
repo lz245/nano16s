@@ -10,6 +10,22 @@ report, so a result can always be traced to the database that produced it.
 
 ## [Unreleased]
 
+## [1.2.3] — 2026-10-21
+
+### Added
+- The guide describes copying a prebuilt database rather than building one —
+  three files, about 45 MB. It avoids the download and the memory, and it is
+  the only way to be sure several people share exactly one reference, since
+  NCBI's collection changes daily.
+- CI runs the pipeline on every pull request, not only on the weekly schedule.
+  The unit, lint and install jobs never execute a rule — install builds the
+  DAG and stops — so nothing on a pull request answered the one question a
+  pipeline change raises: does it still run. A rule whose body no longer works
+  could merge green and be found days later by the scheduled job, or by a
+  user. One platform and the bundled demo, including a database built from
+  NCBI, which takes seven to ten minutes — the pipeline itself is nearly all
+  of it, and varies with the runner. The weekly job is unchanged: two platforms, which is what catches
+  a dependency moving underneath us.
 ### Fixed
 - Four documentation faults, each one found by a student in a classroom rather
   than by review.
@@ -32,23 +48,6 @@ report, so a result can always be traced to the database that produced it.
     open can have the build killed; because the kernel kills it, Emu prints
     nothing and only `ERROR: emu build-database failed` appears. Documented,
     with the `dmesg` check and three fixes.
-
-### Added
-- The guide describes copying a prebuilt database rather than building one —
-  three files, about 45 MB. It avoids the download and the memory, and it is
-  the only way to be sure several people share exactly one reference, since
-  NCBI's collection changes daily.
-
-### Added
-- CI runs the pipeline on every pull request, not only on the weekly schedule.
-  The unit, lint and install jobs never execute a rule — install builds the
-  DAG and stops — so nothing on a pull request answered the one question a
-  pipeline change raises: does it still run. A rule whose body no longer works
-  could merge green and be found days later by the scheduled job, or by a
-  user. One platform and the bundled demo, including a database built from
-  NCBI, which takes seven to ten minutes — the pipeline itself is nearly all
-  of it, and varies with the runner. The weekly job is unchanged: two platforms, which is what catches
-  a dependency moving underneath us.
 
 ## [1.2.2] — 2026-10-05
 

@@ -40,7 +40,7 @@ else
 fi
 SNAKEFILE="$ROOT/workflow/Snakefile"
 CONFIG="$ROOT/config/config.yaml"
-VERSION="1.2.2"
+VERSION="1.2.3"
 
 DB_ROOT="${NANO16S_DB:-$HOME/.nano16s/db}"
 

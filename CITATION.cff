@@ -17,7 +17,7 @@ authors:
     affiliation: Mississippi State University
 license: MIT
 type: software
-version: 1.2.2
+version: 1.2.3
 keywords:
   - nanopore
   - 16S rRNA
