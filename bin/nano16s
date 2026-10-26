@@ -66,7 +66,7 @@ nano16s — Nanopore full-length 16S rRNA amplicon analysis
 USAGE
     nano16s -d <fastq_pass_dir> [OPTIONS]
     nano16s batch -d <dir_of_runs> -o <dir> [OPTIONS]
-    nano16s db build [--version YYYY.MM]
+    nano16s db build [--version YYYY.MM] [--with-rrndb]
     nano16s db list
     nano16s test [-o DIR]
     nano16s --version
@@ -202,14 +202,25 @@ cmd_db() {
     case "$action" in
         build)
             local version=""
+            # Collected as an array rather than a string so the expansion
+            # below stays correct if more pass-through flags are added. Guard
+            # the expansion with a count: bash before 4.4, which is what macOS
+            # ships, treats "${arr[@]}" on an empty array as unset under
+            # `set -u` and aborts.
+            local -a extra=()
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --version) need_value "$@"; version="$2"; shift 2 ;;
+                    --with-rrndb) extra+=( --with-rrndb ); shift ;;
                     *) die "unknown option for 'db build': $1" ;;
                 esac
             done
             [[ -n "$version" ]] || version="$(date +%Y.%m)"
             command -v emu >/dev/null || die "'emu' not found. Run: conda activate nano16s"
+            if (( ${#extra[@]} )); then
+                exec python3 "$ROOT/tools/build_emu_db.py" \
+                    --outdir "$DB_ROOT/$version" "${extra[@]}"
+            fi
             exec python3 "$ROOT/tools/build_emu_db.py" --outdir "$DB_ROOT/$version"
             ;;
         list)
@@ -232,7 +243,7 @@ cmd_db() {
             (( found )) || { echo "  (none)"; echo "Build one with:  nano16s db build"; }
             ;;
         ""|-h|--help)
-            echo "usage: nano16s db build [--version YYYY.MM]"
+            echo "usage: nano16s db build [--version YYYY.MM] [--with-rrndb]"
             echo "       nano16s db list"
             ;;
         *)

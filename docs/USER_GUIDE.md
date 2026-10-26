@@ -456,6 +456,66 @@ This builds from the current NCBI 16S RefSeq Targeted Loci collection — about
 it, and a read from an absent species gets assigned to whatever relative *is*
 present. Building your own avoids that.
 
+### If you need species-level answers: `--with-rrndb`
+
+```bash
+nano16s db build --with-rrndb
+```
+
+The default database is **broad but shallow**. RefSeq Targeted Loci is a type
+strain collection: it aims for one authoritative sequence per named species.
+Measured on the 2026.08 build, the median species has exactly **one** reference
+sequence, and 80% have only one.
+
+That is a problem for species-level calls, and a quiet one. A nanopore read
+carries about 1% error; two sibling species can differ by less than that across
+the 16S gene. With one reference each, whether a read's closest match is the
+right species or its cousin comes down to which strain happens to be in the
+collection. On the ZymoBIOMICS mock community the default database names
+**four of eight species as a close relative** — *E. coli* as *E. fergusonii*,
+*S. aureus* as *S. roterodami*, *L. monocytogenes* as *L. cossartiae*,
+*B. spizizenii* as *B. rugosus* — in every sample, every time. The genus is
+always right, and nothing in your own results would ever look wrong.
+
+`--with-rrndb` adds [rrnDB](https://rrndb.umms.med.umich.edu/)'s 16S set, which
+is extracted from complete genome assemblies and so carries many sequences per
+species rather than one. On the same mock community, all eight species are then
+named correctly, with abundances essentially unchanged.
+
+Measured on the 2026-10 build:
+
+| | species | sequences | sequences for *E. coli* |
+|---|---|---|---|
+| default | 21,002 | 27,724 | 3 |
+| `--with-rrndb` | **27,868** | **96,958** | **3,160** |
+
+Both the breadth and the depth go up, but the depth is the point: three
+quarters of the added sequences go to species the default database already
+covered.
+
+**What it costs.** Classification takes roughly **4–5× longer**, because a
+database full of near-identical references gives the aligner far more
+candidates to weigh per read. `--max-reads` brings that down to about 2.5×:
+
+```bash
+nano16s -d fastq_pass -o results --max-reads 25000
+```
+
+The build itself also downloads about 25 MB more and needs more memory and time
+than the default one.
+
+**Which should you use?** If you report at genus level, the default database is
+fine and considerably faster. If you report species, use `--with-rrndb` — or at
+least check whether the four species above appear in your results under a
+cousin's name.
+
+> **If the rrnDB download fails with a certificate error**, their server is
+> serving an incomplete certificate chain. Nothing is wrong with your setup and
+> the fix is not ours to make. Download the two files yourself and put them in
+> `~/.nano16s/cache`, then re-run the same command — anything already in the
+> cache is not downloaded again. The error message prints the exact `curl`
+> command to use.
+
 ### Managing databases
 
 ```bash
